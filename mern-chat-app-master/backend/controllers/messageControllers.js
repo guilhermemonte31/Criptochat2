@@ -9,7 +9,7 @@ const forge = require("node-forge");
 //@access          Protected
 const allMessages = asyncHandler(async (req, res) => {
   try {
-    const messages = await encryptedMessage.find({ chat: req.params.chatId })
+    const messages = await encryptedMessage.find({ chat: req.params.chatId, recipient: req.user._id })
       .populate("sender", "name pic email")
       .populate("chat");
     res.json(messages);
@@ -96,10 +96,11 @@ const sendMessage = asyncHandler(async (req, res) => {
     const encrypetdMsg = await encryptMsg(content, destinatarioPublicKeyPem);
     const dadosMsgCriptografada = {
       sender: sender._id,
-      destinatario: destinatarioID,
+      recipient: destinatarioID,
       content: encrypetdMsg.toString('base64'),
       chat: chatId,
     };
+    console.log("DADOSPFC ", dadosMsgCriptografada); // Amarelo
     let msgCriptografada = await encryptedMessage.create(dadosMsgCriptografada);
     msgsCriptografadas.push(msgCriptografada);
   }
@@ -110,11 +111,13 @@ const sendMessage = asyncHandler(async (req, res) => {
 
   const dadosMsgCriptografadaRemetente = {
     sender: sender._id,
+    recipient: sender._id,
     content: msgCriptografadaRemetente.toString('base64'),
     chat: chatId,
   };
   
   console.log("\x1b[33mTeste1444\x1b[0m"); // Amarelo
+  console.log("DADOSPFC REMETENTE ", dadosMsgCriptografadaRemetente); // Amarelo
   let msgCriptografadaRemetenteFinal = await encryptedMessage.create(dadosMsgCriptografadaRemetente);
 
   console.log("\x1b[33mTeste2\x1b[0m"); // Amarelo
