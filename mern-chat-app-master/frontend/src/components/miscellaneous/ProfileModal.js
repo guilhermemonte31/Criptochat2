@@ -11,7 +11,6 @@ import {
   useDisclosure,
   IconButton,
   Text,
-  Image,
 } from "@chakra-ui/react";
 
 const ProfileModal = ({ user, children }) => {
@@ -26,7 +25,7 @@ const ProfileModal = ({ user, children }) => {
       )}
       <Modal size="lg" onClose={onClose} isOpen={isOpen} isCentered>
         <ModalOverlay />
-        <ModalContent h="410px">
+        <ModalContent h="250px">
           <ModalHeader
             fontSize="40px"
             fontFamily="Work sans"
@@ -42,12 +41,6 @@ const ProfileModal = ({ user, children }) => {
             alignItems="center"
             justifyContent="space-between"
           >
-            <Image
-              borderRadius="full"
-              boxSize="150px"
-              src={user.pic}
-              alt={user.name}
-            />
             <Text
               fontSize={{ base: "28px", md: "30px" }}
               fontFamily="Work sans"
