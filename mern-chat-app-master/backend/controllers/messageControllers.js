@@ -20,7 +20,6 @@ const allMessages = asyncHandler(async (req, res) => {
 });
 
 
-
 //@description     Create New Message
 //@route           POST /api/Message/
 //@access          Protected
@@ -33,15 +32,8 @@ const sendMessage = asyncHandler(async (req, res) => {
     console.log("Invalid data passed into request");
     return res.sendStatus(400);
   }
-  console.log("\x1b[33mTeste1\x1b[0m"); // Amarelo
+  console.log("\x1b[33mTeste1\x1b[0m");
 
-  // var newMessage = {
-  //   sender: req.user._id,
-  //   content: content,
-  //   chat: chatId,
-  // };
-
-  
   const senderEmail = req.user.email;
   const sender = chatId.users.find(user => user.email === senderEmail);
   console.log("Sender public key: ", sender.publicKey);
@@ -49,7 +41,6 @@ const sendMessage = asyncHandler(async (req, res) => {
   if (!sender) {
     return res.status(400).json({ message: "Sender not found in chat" });
   }
-  
 
   const destinatarios = chatId.users.filter(user => user.email !== senderEmail);
   console.log("Destinatarios: ", destinatarios);
@@ -68,7 +59,6 @@ const sendMessage = asyncHandler(async (req, res) => {
   const msgCriptografadaRemetente = await encryptMsg(content, remetentePublicKey);
   console.log("Mensagem criptografada para o remetente: ", msgCriptografadaRemetente.toString('base64'));
 
-
   const versoesMsgCriptografada = [];
   for(const destinatario of destinatarios) {
     const destinatarioPublicKeyPem = destinatario.publicKey;
@@ -86,8 +76,7 @@ const sendMessage = asyncHandler(async (req, res) => {
     console.log(`Mensagem para ${dest}: ${msgCript}`);
   });
   
-  console.log("\x1b[33mTeste111\x1b[0m"); // Amarelo
-
+  console.log("\x1b[33mTeste111\x1b[0m");
 
   const msgsCriptografadas = [];
   for(const destinatario of destinatarios) {
@@ -96,71 +85,68 @@ const sendMessage = asyncHandler(async (req, res) => {
     const encrypetdMsg = await encryptMsg(content, destinatarioPublicKeyPem);
     const dadosMsgCriptografada = {
       sender: sender._id,
-      recipient: destinatarioID,
+      destinatario: destinatarioID,
       content: encrypetdMsg.toString('base64'),
       chat: chatId,
     };
-    console.log("DADOSPFC ", dadosMsgCriptografada); // Amarelo
     let msgCriptografada = await encryptedMessage.create(dadosMsgCriptografada);
     msgsCriptografadas.push(msgCriptografada);
   }
   
-  console.log("\x1b[33mTeste122\x1b[0m"); // Amarelo
-
-  res.json({ versoesMsgCriptografada, msgsCriptografadas });
+  console.log("\x1b[33mTeste122\x1b[0m");
 
   const dadosMsgCriptografadaRemetente = {
     sender: sender._id,
-    recipient: sender._id,
     content: msgCriptografadaRemetente.toString('base64'),
     chat: chatId,
   };
   
-  console.log("\x1b[33mTeste1444\x1b[0m"); // Amarelo
-  console.log("DADOSPFC REMETENTE ", dadosMsgCriptografadaRemetente); // Amarelo
+  console.log("\x1b[33mTeste1444\x1b[0m");
   let msgCriptografadaRemetenteFinal = await encryptedMessage.create(dadosMsgCriptografadaRemetente);
 
-  console.log("\x1b[33mTeste2\x1b[0m"); // Amarelo
+  console.log("\x1b[33mTeste2\x1b[0m");
   try{
-    mensagemCriptografadaRemetente = await msgCriptografadaRemetenteFinal
-      .populate("sender", "name pic")
-      .populate("chat")
-      .execPopulate();
-    mensagemCriptografadaRemetente = await mensagemCriptografadaRemetente
-    .populate("chat")
-    .execPopulate();
+    // Populate a mensagem do remetente
+    mensagemCriptografadaRemetente = await encryptedMessage.findById(msgCriptografadaRemetenteFinal._id)
+      .populate("sender", "name pic email")
+      .populate("chat");
+
     mensagemCriptografadaRemetente = await User.populate(mensagemCriptografadaRemetente, {
       path: "chat.users",
       select: "name pic email",
     });
 
+    // Populate as mensagens dos destinatários
     const msgCriptografadasPopuladas = await Promise.all(
       msgsCriptografadas.map(async (msg) => {
-        let msgPopulada = await msg
-          .populate("sender", "name pic")
-          .execPopulate();
-        msgPopulada = await msgPopulada
-          .populate("chat")
-          .execPopulate();
+        let msgPopulada = await encryptedMessage.findById(msg._id)
+          .populate("sender", "name pic email")
+          .populate("chat");
+        
         msgPopulada = await User.populate(msgPopulada, {
           path: "chat.users",
           select: "name pic email",
         });
+        
+        return msgPopulada;
       })
-
     );
-    console.log("\x1b[33mTeste3654664\x1b[0m"); // Amarelo
+    
+    console.log("\x1b[33mTeste3654664\x1b[0m");
     await Chat.findByIdAndUpdate(chatId, { latestMessage: mensagemCriptografadaRemetente });
     
-  console.log("\x1b[33mTeste366666\x1b[0m"); // Amarelo
-    res.json({mensagemCriptografadaRemetente, msgCriptografadasPopuladas});
-    console.log("\x1b[33mTeste4\x1b[0m"); // Amarelo
+    console.log("\x1b[33mTeste366666\x1b[0m");
+    
+    // REMOVA o res.json anterior e envie apenas UMA resposta aqui
+    res.json(mensagemCriptografadaRemetente);
+    
+    console.log("\x1b[33mTeste4\x1b[0m");
 
   } catch (error) {
     res.status(400);
     throw new Error(error.message);
   }
-  console.log("\x1b[33mTeste3\x1b[0m"); // Amarelo
+  console.log("\x1b[33mTeste3\x1b[0m");
 });
 
   
