@@ -1,0 +1,231 @@
+/* Menu dropdown - Z-index */
+.chakra-menu__menu-list {
+    background: #1e2433 !important;
+    border: 1px solid rgba(0, 168, 142, 0.3) !important;
+    border-radius: 10px !important;
+    padding: 6px !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
+    min-width: 180px !important;
+    z-index: 9999 !important;
+}
+
+/* Drawer de busca - Z-index */
+.chakra-modal__overlay,
+.chakra-drawer__overlay {
+    z-index: 9998 !important;
+}
+
+.chakra-drawer__content {
+    z-index: 9999 !important;
+}
+
+.sidedrawer-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(15, 20, 35, 0.98);
+  backdrop-filter: blur(10px);
+  width: 100%;
+  padding: 12px 20px;
+  border-bottom: 1px solid rgba(0, 168, 142, 0.2);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  height: 60px;
+}
+
+.search-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: transparent;
+  border: 1px solid rgba(100, 116, 139, 0.3);
+  border-radius: 8px;
+  color: #94a3b8;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.search-button:hover {
+  background: rgba(0, 168, 142, 0.1);
+  border-color: rgba(0, 168, 142, 0.5);
+  color: #00a88e;
+}
+
+.search-button i {
+  font-size: 1rem;
+}
+
+.app-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 0.5px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.notification-btn {
+  position: relative;
+  padding: 8px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  color: #00a88e;
+}
+
+.notification-btn:hover {
+  transform: scale(1.1);
+}
+
+.bell-icon {
+  font-size: 1.4rem;
+}
+
+.user-menu-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid rgba(100, 116, 139, 0.3);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.user-menu-btn:hover {
+  background: rgba(0, 168, 142, 0.1);
+  border-color: rgba(0, 168, 142, 0.5);
+}
+
+.chevron-icon {
+  color: #00a88e;
+}
+
+/* Drawer de busca */
+.search-drawer {
+  background: #1e2433 !important;
+  color: white !important;
+}
+
+.search-drawer-header {
+  border-bottom: 1px solid rgba(100, 116, 139, 0.2);
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.search-input-container {
+  display: flex;
+  gap: 10px;
+  padding-bottom: 16px;
+}
+
+.search-input {
+  flex: 1;
+  padding: 10px 14px;
+  background: rgba(30, 35, 58, 0.8);
+  border: 1px solid rgba(100, 116, 139, 0.3);
+  border-radius: 8px;
+  color: white;
+  font-size: 0.9rem;
+  outline: none;
+  transition: all 0.3s ease;
+}
+
+.search-input::placeholder {
+  color: #64748b;
+}
+
+.search-input:focus {
+  border-color: #00a88e;
+  box-shadow: 0 0 0 3px rgba(0, 168, 142, 0.1);
+}
+
+.search-go-btn {
+  padding: 10px 20px;
+  background: #00a88e;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.search-go-btn:hover {
+  background: #00c9a7;
+  transform: translateY(-1px);
+}
+
+/* Menu dropdown */
+.dropdown-menu {
+  background: #1e2433 !important;
+  border: 1px solid rgba(100, 116, 139, 0.2) !important;
+  border-radius: 8px !important;
+  padding: 4px !important;
+}
+
+.dropdown-item {
+  background: transparent !important;
+  color: #e2e8f0 !important;
+  padding: 10px 16px !important;
+  border-radius: 6px !important;
+  transition: all 0.2s ease !important;
+}
+
+.dropdown-item:hover {
+  background: rgba(0, 168, 142, 0.1) !important;
+  color: #00a88e !important;
+}
+
+/* Menu dropdown - Estilos corrigidos */
+.chakra-menu__menu-list {
+    background: #1e2433 !important;
+    border: 1px solid rgba(0, 168, 142, 0.3) !important;
+    border-radius: 10px !important;
+    padding: 6px !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
+    min-width: 180px !important;
+}
+
+.chakra-menu__menuitem {
+    background: transparent !important;
+    color: #e2e8f0 !important;
+    padding: 10px 14px !important;
+    border-radius: 6px !important;
+    font-size: 0.9rem !important;
+    transition: all 0.2s ease !important;
+    margin-bottom: 2px !important;
+}
+
+.chakra-menu__menuitem:hover {
+    background: rgba(0, 168, 142, 0.15) !important;
+    color: #00c9a7 !important;
+}
+
+.chakra-menu__menuitem:focus {
+    background: rgba(0, 168, 142, 0.15) !important;
+    color: #00c9a7 !important;
+}
+
+.chakra-menu__menu-button {
+    background: transparent !important;
+}
+
+.chakra-menu__divider {
+    border-color: rgba(100, 116, 139, 0.3) !important;
+    margin: 6px 0 !important;
+}
+
+/* Notification Badge */
+.notification-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+}

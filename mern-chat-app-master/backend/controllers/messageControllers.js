@@ -9,147 +9,56 @@ const forge = require("node-forge");
 //@access          Protected
 const allMessages = asyncHandler(async (req, res) => {
   try {
-    const messages = await encryptedMessage.find({ chat: req.params.chatId, recipient: req.user._id })
+    console.log("\n=== BUSCANDO MENSAGENS ===");
+    console.log("Chat ID:", req.params.chatId);
+    console.log("Usuario ID:", req.user._id);
+    console.log("Usuario Email:", req.user.email);
+    
+    // Buscar TODAS as mensagens do chat primeiro
+    const allChatMessages = await encryptedMessage.find({ 
+      chat: req.params.chatId
+    })
       .populate("sender", "name pic email")
-      .populate("chat");
-    res.json(messages);
+      .populate("destinatario", "name email")
+      .populate("chat")
+      .sort({ createdAt: 1 });
+    
+    console.log("Total de mensagens no chat:", allChatMessages.length);
+    
+    // Converter req.user._id para string para comparação
+    const currentUserId = req.user._id.toString();
+    
+    // Filtrar apenas as mensagens que o usuário pode ver
+    const userMessages = allChatMessages.filter(msg => {
+      const senderId = msg.sender._id.toString();
+      const destinatarioId = msg.destinatario ? msg.destinatario._id.toString() : null;
+      
+      // Se não tem destinatário E o sender é o usuário atual, é mensagem dele
+      const isSender = !msg.destinatario && senderId === currentUserId;
+      // Se tem destinatário E o destinatário é o usuário atual
+      const isRecipient = msg.destinatario && destinatarioId === currentUserId;
+      
+      console.log(`Mensagem ${msg._id}:`);
+      console.log(`  - Sender: ${msg.sender.email} (${senderId})`);
+      console.log(`  - Destinatario: ${msg.destinatario ? msg.destinatario.email : 'nenhum'} ${destinatarioId ? `(${destinatarioId})` : ''}`);
+      console.log(`  - Current User: ${req.user.email} (${currentUserId})`);
+      console.log(`  - isSender: ${isSender}`);
+      console.log(`  - isRecipient: ${isRecipient}`);
+      console.log(`  - Incluir: ${isSender || isRecipient}`);
+      
+      return isSender || isRecipient;
+    });
+    
+    console.log("Mensagens filtradas para o usuário:", userMessages.length);
+    console.log("=== FIM DA BUSCA ===\n");
+    
+    res.json(userMessages);
   } catch (error) {
+    console.error("ERRO ao buscar mensagens:", error);
     res.status(400);
     throw new Error(error.message);
   }
 });
-
-
-//@description     Create New Message
-//@route           POST /api/Message/
-//@access          Protected
-const sendMessage = asyncHandler(async (req, res) => {
-  console.log(req.body);
-
-  const { content, chatId } = req.body;
-
-  if (!content || !chatId) {
-    console.log("Invalid data passed into request");
-    return res.sendStatus(400);
-  }
-  console.log("\x1b[33mTeste1\x1b[0m");
-
-  const senderEmail = req.user.email;
-  const sender = chatId.users.find(user => user.email === senderEmail);
-  console.log("Sender public key: ", sender.publicKey);
-
-  if (!sender) {
-    return res.status(400).json({ message: "Sender not found in chat" });
-  }
-
-  const destinatarios = chatId.users.filter(user => user.email !== senderEmail);
-  console.log("Destinatarios: ", destinatarios);
-  destinatarios.forEach(destinatario => {
-    console.log("Destinatario: ", destinatario.name, "- public key: ", destinatario.publicKey);
-  });
-
-  if(destinatarios.length === 0) {
-    return res.status(400).json({ message: "No recipients found in chat" });
-  }
-
-  console.log("Mensagem verdadeira: ", content);
-
-  const remetentePublicKey = sender.publicKey;
-  console.log("Chave pública do remetente: ", remetentePublicKey);
-  const msgCriptografadaRemetente = await encryptMsg(content, remetentePublicKey);
-  console.log("Mensagem criptografada para o remetente: ", msgCriptografadaRemetente.toString('base64'));
-
-  const versoesMsgCriptografada = [];
-  for(const destinatario of destinatarios) {
-    const destinatarioPublicKeyPem = destinatario.publicKey;
-    console.log("Chave pública do destinatario: ", destinatarioPublicKeyPem);
-    const encrypetdMsg = await encryptMsg(content, destinatarioPublicKeyPem);
-    console.log("TESTEEEE");
-    versoesMsgCriptografada.push({
-      dest: destinatario.name,
-      msgCript: encrypetdMsg.toString('base64')
-    });
-    console.log(`Mensagem criptografada para ${destinatario.name}: `, encrypetdMsg.toString('base64'));
-  }
-  
-  versoesMsgCriptografada.forEach(({dest, msgCript}) => {
-    console.log(`Mensagem para ${dest}: ${msgCript}`);
-  });
-  
-  console.log("\x1b[33mTeste111\x1b[0m");
-
-  const msgsCriptografadas = [];
-  for(const destinatario of destinatarios) {
-    const destinatarioID = destinatario._id;
-    const destinatarioPublicKeyPem = destinatario.publicKey;
-    const encrypetdMsg = await encryptMsg(content, destinatarioPublicKeyPem);
-    const dadosMsgCriptografada = {
-      sender: sender._id,
-      destinatario: destinatarioID,
-      content: encrypetdMsg.toString('base64'),
-      chat: chatId,
-    };
-    let msgCriptografada = await encryptedMessage.create(dadosMsgCriptografada);
-    msgsCriptografadas.push(msgCriptografada);
-  }
-  
-  console.log("\x1b[33mTeste122\x1b[0m");
-
-  const dadosMsgCriptografadaRemetente = {
-    sender: sender._id,
-    content: msgCriptografadaRemetente.toString('base64'),
-    chat: chatId,
-  };
-  
-  console.log("\x1b[33mTeste1444\x1b[0m");
-  let msgCriptografadaRemetenteFinal = await encryptedMessage.create(dadosMsgCriptografadaRemetente);
-
-  console.log("\x1b[33mTeste2\x1b[0m");
-  try{
-    // Populate a mensagem do remetente
-    mensagemCriptografadaRemetente = await encryptedMessage.findById(msgCriptografadaRemetenteFinal._id)
-      .populate("sender", "name pic email")
-      .populate("chat");
-
-    mensagemCriptografadaRemetente = await User.populate(mensagemCriptografadaRemetente, {
-      path: "chat.users",
-      select: "name pic email",
-    });
-
-    // Populate as mensagens dos destinatários
-    const msgCriptografadasPopuladas = await Promise.all(
-      msgsCriptografadas.map(async (msg) => {
-        let msgPopulada = await encryptedMessage.findById(msg._id)
-          .populate("sender", "name pic email")
-          .populate("chat");
-        
-        msgPopulada = await User.populate(msgPopulada, {
-          path: "chat.users",
-          select: "name pic email",
-        });
-        
-        return msgPopulada;
-      })
-    );
-    
-    console.log("\x1b[33mTeste3654664\x1b[0m");
-    await Chat.findByIdAndUpdate(chatId, { latestMessage: mensagemCriptografadaRemetente });
-    
-    console.log("\x1b[33mTeste366666\x1b[0m");
-    
-    // REMOVA o res.json anterior e envie apenas UMA resposta aqui
-    res.json(mensagemCriptografadaRemetente);
-    
-    console.log("\x1b[33mTeste4\x1b[0m");
-
-  } catch (error) {
-    res.status(400);
-    throw new Error(error.message);
-  }
-  console.log("\x1b[33mTeste3\x1b[0m");
-});
-
-  
 
 const encryptMsg = async (message, publicKeyPem) => {
   try {
@@ -162,36 +71,143 @@ const encryptMsg = async (message, publicKeyPem) => {
   }
 };
 
-const decryptMsg = (privateKeyPem, encryptedMessage) => {
-  try {
-    const privateKey = forge.pki.privateKeyFromPem(privateKeyPem);
-    const decrypted = privateKey.decrypt(forge.util.decode64(encryptedMessage), 'RSA-OAEP');
-    return forge.util.decodeUtf8(decrypted);
-  } catch (error) {
-    console.error("Error decrypting message: ", error);
-    throw error;
+//@description     Create New Message
+//@route           POST /api/Message/
+//@access          Protected
+const sendMessage = asyncHandler(async (req, res) => {
+  console.log("\n=== INICIANDO ENVIO DE MENSAGEM ===");
+  console.log("Body recebido:", JSON.stringify(req.body, null, 2));
+  console.log("Usuario:", req.user.email, "ID:", req.user._id);
+
+  const { content, chatId } = req.body;
+
+  if (!content || !chatId) {
+    console.log("❌ Dados inválidos - content ou chatId faltando");
+    return res.sendStatus(400);
   }
-};
 
+  try {
+    // Buscar o chat completo com os usuários
+    const chatIdValue = chatId._id || chatId;
+    console.log("Buscando chat com ID:", chatIdValue);
+    
+    const chat = await Chat.findById(chatIdValue).populate("users", "name email publicKey");
+    
+    if (!chat) {
+      console.log("❌ Chat não encontrado");
+      return res.status(404).json({ message: "Chat not found" });
+    }
 
-  
+    console.log("✓ Chat encontrado:", chat._id);
+    console.log("✓ Usuários no chat:", chat.users.map(u => `${u.name} (${u.email})`).join(", "));
 
-  // try {
-  //   var message = await Message.create(newMessage);
+    const senderEmail = req.user.email;
+    const sender = chat.users.find(user => user.email === senderEmail);
 
-  //   message = await message.populate("sender", "name pic").execPopulate();
-  //   message = await message.populate("chat").execPopulate();
-  //   message = await User.populate(message, {
-  //     path: "chat.users",
-  //     select: "name pic email",
-  //   });
+    if (!sender) {
+      console.log("❌ Remetente não encontrado no chat");
+      return res.status(400).json({ message: "Sender not found in chat" });
+    }
 
-  //   await Chat.findByIdAndUpdate(req.body.chatId, { latestMessage: message });
+    console.log("✓ Remetente:", sender.name, sender.email);
 
-  //   res.json(message);
-  // } catch (error) {
-  //   res.status(400);
-  //   throw new Error(error.message);
-  // }
+    const destinatarios = chat.users.filter(user => user.email !== senderEmail);
+    
+    console.log("✓ Destinatários:", destinatarios.map(d => `${d.name} (${d.email})`).join(", "));
+
+    if(destinatarios.length === 0) {
+      console.log("⚠️ Nenhum destinatário encontrado (chat consigo mesmo?)");
+      return res.status(400).json({ message: "No recipients found in chat" });
+    }
+
+    console.log("📝 Mensagem original:", content);
+
+    // 1. Criptografar e criar mensagem para o REMETENTE (sem destinatario)
+    console.log("\n--- Criando mensagem para o REMETENTE ---");
+    const msgCriptografadaRemetente = await encryptMsg(content, sender.publicKey);
+    console.log("✓ Mensagem criptografada (50 primeiros chars):", msgCriptografadaRemetente.substring(0, 50));
+
+    const dadosMsgRemetente = {
+      sender: sender._id,
+      content: msgCriptografadaRemetente,
+      chat: chat._id,
+      // NÃO incluir destinatario aqui
+    };
+
+    console.log("Dados da mensagem do remetente:", {
+      sender: sender.email,
+      chat: chat._id,
+      hasDestinatario: false,
+      contentLength: msgCriptografadaRemetente.length
+    });
+
+    const msgRemetente = await encryptedMessage.create(dadosMsgRemetente);
+    console.log("✓ Mensagem do remetente criada com ID:", msgRemetente._id);
+
+    // 2. Criar mensagens para cada DESTINATÁRIO
+    console.log("\n--- Criando mensagens para DESTINATÁRIOS ---");
+    const msgsDestinatarios = [];
+    
+    for(const destinatario of destinatarios) {
+      console.log(`\nProcessando destinatário: ${destinatario.name} (${destinatario.email})`);
+      
+      const encryptedMsg = await encryptMsg(content, destinatario.publicKey);
+      console.log("✓ Mensagem criptografada");
+      
+      const dadosMsgDestinatario = {
+        sender: sender._id,
+        destinatario: destinatario._id, // IMPORTANTE: incluir o destinatário
+        content: encryptedMsg,
+        chat: chat._id,
+      };
+      
+      console.log("Dados da mensagem do destinatário:", {
+        sender: sender.email,
+        destinatario: destinatario.email,
+        chat: chat._id,
+        contentLength: encryptedMsg.length
+      });
+      
+      const msgDestinatario = await encryptedMessage.create(dadosMsgDestinatario);
+      console.log("✓ Mensagem criada com ID:", msgDestinatario._id);
+      msgsDestinatarios.push(msgDestinatario);
+    }
+
+    console.log(`\n✓ Total de mensagens criadas: 1 (remetente) + ${msgsDestinatarios.length} (destinatários)`);
+
+    // 3. Populate a mensagem do remetente para retornar
+    console.log("\n--- Preparando resposta ---");
+    let mensagemFinal = await encryptedMessage.findById(msgRemetente._id)
+      .populate("sender", "name pic email")
+      .populate("chat");
+
+    mensagemFinal = await User.populate(mensagemFinal, {
+      path: "chat.users",
+      select: "name pic email",
+    });
+
+    // 4. Atualizar o chat com a última mensagem
+    await Chat.findByIdAndUpdate(chat._id, { latestMessage: mensagemFinal });
+    console.log("✓ Chat atualizado com latestMessage");
+
+    console.log("\n✓ Mensagem final preparada:", {
+      _id: mensagemFinal._id,
+      sender: mensagemFinal.sender.email,
+      chat: mensagemFinal.chat._id,
+      hasContent: !!mensagemFinal.content,
+      contentLength: mensagemFinal.content.length
+    });
+
+    console.log("=== ENVIO CONCLUÍDO COM SUCESSO ===\n");
+    
+    res.json(mensagemFinal);
+
+  } catch (error) {
+    console.error("❌ ERRO ao enviar mensagem:", error);
+    console.error("Stack:", error.stack);
+    res.status(400);
+    throw new Error(error.message);
+  }
+});
 
 module.exports = { allMessages, sendMessage };

@@ -3,23 +3,37 @@ const bcrypt = require("bcryptjs");
 
 const userSchema = mongoose.Schema(
   {
-    name: { type: "String", required: true },
-    email: { type: "String", unique: true, required: true },
-    password: { type: "String", required: true },
-    // pic: {
-    //   type: "String",
-    //   required: true,
-    //   default:
-    //     "https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg",
-    // },
+    name: {
+      type: String,
+      required: true,
+      trim: true, // Adicionar trim para remover espaços
+    },
+    email: {
+      type: String,
+      unique: true,
+      required: true,
+      lowercase: true, // Converter para minúsculas
+      trim: true,
+    },
+    password: { type: String, required: true },
+    pic: {
+      type: String,
+      required: true,
+      default:
+        "https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg",
+    },
     isAdmin: {
       type: Boolean,
       required: true,
       default: false,
     },
-    publicKey: { type: "String", required: true }, // Adiciona a chave pública
+    publicKey: { type: String, required: true },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    // Garantir UTF-8
+    collection: "users",
+  }
 );
 
 userSchema.methods.matchPassword = async function (enteredPassword) {
@@ -27,12 +41,13 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
 };
 
 userSchema.pre("save", async function (next) {
-  if (!this.isModified) {
-    next();
+  if (!this.isModified("password")) {
+    return next();
   }
 
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
+  next();
 });
 
 const User = mongoose.model("User", userSchema);

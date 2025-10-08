@@ -1,7 +1,3 @@
-import { Button } from "@chakra-ui/button";
-import { FormControl, FormLabel } from "@chakra-ui/form-control";
-import { Input, InputGroup, InputRightElement } from "@chakra-ui/input";
-import { VStack } from "@chakra-ui/layout";
 import { useToast } from "@chakra-ui/toast";
 import axios from "axios";
 import { useState } from "react";
@@ -14,22 +10,24 @@ const Signup = () => {
   const toast = useToast();
   const history = useHistory();
 
-  const [name, setName] = useState();
-  const [email, setEmail] = useState();
-  const [publicKey, setPublicKey] = useState();
-  const [privateKey, setPrivateKey] = useState();
-  const [confirmpassword, setConfirmpassword] = useState();
-  const [password, setPassword] = useState();
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmpassword, setConfirmpassword] = useState("");
+  const [pic, setPic] = useState();
+  const [picLoading, setPicLoading] = useState(false);
 
   const submitHandler = async () => {
+    setPicLoading(true);
     if (!name || !email || !password || !confirmpassword) {
       toast({
-        title: "Please Fill all the Feilds",
+        title: "Please Fill all the Fields",
         status: "warning",
         duration: 5000,
         isClosable: true,
         position: "bottom",
       });
+      setPicLoading(false);
       return;
     }
     if (password !== confirmpassword) {
@@ -40,44 +38,33 @@ const Signup = () => {
         isClosable: true,
         position: "bottom",
       });
+      setPicLoading(false);
       return;
     }
-    console.log(name, email, password);
+
     try {
-      // Gera o par de chaves RSA
       const keypair = forge.pki.rsa.generateKeyPair({ bits: 2048 });
       const publicKeyPem = forge.pki.publicKeyToPem(keypair.publicKey);
       const privateKeyPem = forge.pki.privateKeyToPem(keypair.privateKey);
-      console.log("Chave pública: ", publicKeyPem);
-      console.log("Chave privada: ", privateKeyPem);
-      setPublicKey(publicKeyPem);
-      setPrivateKey(privateKeyPem);
-      // Envia a chave pública ao backend junto com os outros dados do usuário
-      // A chave privada deve ser armazenada com segurança no cliente (nunca envie ao servidor)
-      // Aqui estamos apenas simulando o envio ao backend
-      // Você deve implementar o armazenamento seguro da chave privada no cliente
-      // Exemplo: armazenar no localStorage (não é a forma mais segura, mas serve para demonstração)
-      //localStorage.setItem("privateKey", privateKeyPem);
-
-      // Envia os dados do usuário ao backend
-
 
       const config = {
         headers: {
           "Content-type": "application/json",
         },
       };
+      
       const { data } = await axios.post(
         "/api/user",
         {
           name,
           email,
           password,
-          publicKey,
+          pic,
+          publicKey: publicKeyPem,
         },
         config
       );
-      console.log(data);
+
       toast({
         title: "Registration Successful",
         status: "success",
@@ -85,79 +72,155 @@ const Signup = () => {
         isClosable: true,
         position: "bottom",
       });
-      //localStorage.setItem("superprivatekey", privateKey);
 
-      localStorage.setItem(`${name}_privateKey`, privateKey);
+      localStorage.setItem(`${name}_privateKey`, privateKeyPem);
+      localStorage.setItem("userInfo", JSON.stringify(data));
+      setPicLoading(false);
       history.push("/chats");
     } catch (error) {
       toast({
-        title: "Error Occured!",
-        description: error.response.data.message,
+        title: "Error Occurred!",
+        description: error.response?.data?.message || "Registration failed",
         status: "error",
         duration: 5000,
         isClosable: true,
         position: "bottom",
       });
+      setPicLoading(false);
+    }
+  };
+
+  const postDetails = (pics) => {
+    setPicLoading(true);
+    if (pics === undefined) {
+      toast({
+        title: "Please Select an Image!",
+        status: "warning",
+        duration: 5000,
+        isClosable: true,
+        position: "bottom",
+      });
+      setPicLoading(false);
+      return;
+    }
+
+    if (pics.type === "image/jpeg" || pics.type === "image/png") {
+      const data = new FormData();
+      data.append("file", pics);
+      data.append("upload_preset", "chat-app");
+      data.append("cloud_name", "piyushproj");
+      fetch("https://api.cloudinary.com/v1_1/piyushproj/image/upload", {
+        method: "post",
+        body: data,
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          setPic(data.url.toString());
+          setPicLoading(false);
+        })
+        .catch((err) => {
+          console.log(err);
+          setPicLoading(false);
+        });
+    } else {
+      toast({
+        title: "Please Select an Image!",
+        status: "warning",
+        duration: 5000,
+        isClosable: true,
+        position: "bottom",
+      });
+      setPicLoading(false);
     }
   };
 
   return (
-    <VStack spacing="5px">
-      <FormControl id="first-name" isRequired>
-        <FormLabel>Nome</FormLabel>
-        <Input
-          placeholder="Insira seu nome"
+    <>
+      <div className="form-group">
+        <label className="form-label">Name *</label>
+        <input
+          className="form-input"
+          placeholder="Enter Your Name"
+          value={name}
           onChange={(e) => setName(e.target.value)}
         />
-      </FormControl>
-      <FormControl id="email" isRequired>
-        <FormLabel>Email</FormLabel>
-        <Input
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">Email Address *</label>
+        <input
+          className="form-input"
           type="email"
-          placeholder="Insira seu email"
+          placeholder="Enter Your Email Address"
+          value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
-      </FormControl>
-      <FormControl id="password" isRequired>
-        <FormLabel>Senha</FormLabel>
-        <InputGroup size="md">
-          <Input
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">Password *</label>
+        <div className="input-with-button">
+          <input
+            className="form-input"
             type={show ? "text" : "password"}
-            placeholder="Insira sua senha"
+            placeholder="Enter Password"
+            value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
-          <InputRightElement width="4.5rem">
-            <Button h="1.75rem" size="sm" onClick={handleClick}>
-              {show ? "Esconder" : "Mostrar"}
-            </Button>
-          </InputRightElement>
-        </InputGroup>
-      </FormControl>
-      <FormControl id="password" isRequired>
-        <FormLabel>Confirmar Senha</FormLabel>
-        <InputGroup size="md">
-          <Input
+          <button
+            className="show-password-btn"
+            onClick={handleClick}
+            type="button"
+          >
+            {show ? "Hide" : "Show"}
+          </button>
+        </div>
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">Confirm Password *</label>
+        <div className="input-with-button">
+          <input
+            className="form-input"
             type={show ? "text" : "password"}
-            placeholder="Confirme sua senha"
+            placeholder="Confirm password"
+            value={confirmpassword}
             onChange={(e) => setConfirmpassword(e.target.value)}
           />
-          <InputRightElement width="4.5rem">
-            <Button h="1.75rem" size="sm" onClick={handleClick}>
-              {show ? "Esconder" : "Mostrar"}
-            </Button>
-          </InputRightElement>
-        </InputGroup>
-      </FormControl>
-      
-      <Button
-        colorScheme="blue"
-        width="100%"
-        style={{ marginTop: 15 }}
+          <button
+            className="show-password-btn"
+            onClick={handleClick}
+            type="button"
+          >
+            {show ? "Hide" : "Show"}
+          </button>
+        </div>
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">Upload your Picture</label>
+        <div className="file-input-wrapper">
+          <input
+            type="file"
+            id="pic-upload"
+            accept="image/*"
+            onChange={(e) => postDetails(e.target.files[0])}
+          />
+          <label htmlFor="pic-upload" className="file-input-label">
+            {pic ? "Image Selected ✓" : "Choose File"}
+          </label>
+        </div>
+      </div>
+
+      <button
+        className="btn btn-signup"
         onClick={submitHandler}
+        disabled={picLoading}
       >
+        {picLoading && <span className="spinner"></span>}
         Sign Up
-      </Button>
-    </VStack>
+      </button>
+    </>
   );
 };
 

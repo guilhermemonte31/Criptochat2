@@ -11,3 +11,22 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+/* Garantir que modais sempre apareçam na frente */
+[data-chakra-modal-overlay],
+[data-chakra-drawer-overlay] {
+  z-index: 9998 !important;
+}
+
+[data-chakra-modal-content],
+[data-chakra-drawer-content] {
+  z-index: 9999 !important;
+}
+
+.chakra-portal {
+  z-index: 9998 !important;
+}
+
+.chakra-portal>* {
+  z-index: 9999 !important;
+}

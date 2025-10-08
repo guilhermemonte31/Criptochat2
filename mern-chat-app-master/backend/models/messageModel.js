@@ -9,10 +9,11 @@ const testSchema = mongoose.Schema(
   },
   { timestamps: true }
 );
+
 const encryptedMessageSchema = mongoose.Schema(
   {
     sender: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    recipient: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    destinatario: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, // Opcional
     content: { type: String, trim: true },
     chat: { type: mongoose.Schema.Types.ObjectId, ref: "Chat" },
     readBy: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],

@@ -10,6 +10,17 @@ const text = "production";
 connectDB();
 const app = express();
 
+// Configurações para UTF-8
+app.use(express.json({ charset: 'utf8' }));
+app.use(express.urlencoded({ extended: true, charset: 'utf8' }));
+
+// Definir charset nas respostas
+app.use((req, res, next) => {
+  res.charset = 'utf-8';
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  next();
+});
+
 app.use(express.json()); // to accept json data
 
 // app.get("/", (req, res) => {
@@ -59,32 +70,34 @@ const io = require("socket.io")(server, {
 
 io.on("connection", (socket) => {
   console.log("Connected to socket.io");
+  
   socket.on("setup", (userData) => {
     socket.join(userData._id);
     socket.emit("connected");
+    console.log("Usuario conectado:", userData._id);
   });
 
   socket.on("join chat", (room) => {
     socket.join(room);
+    console.log("Usuario entrou na sala:", room);
   });
+  
   socket.on("typing", (room) => socket.in(room).emit("typing"));
   socket.on("stop typing", (room) => socket.in(room).emit("stop typing"));
 
-  socket.on("new message", (room) => {
-    // var chat = newMessageRecieved.chat;
-
-    // if (!chat.users) return console.log("chat.users not defined");
-
-    // chat.users.forEach((user) => {
-    //   if (user._id == newMessageRecieved.sender._id) return;
-
-    //   socket.in(user._id).emit("message recieved", newMessageRecieved);
-    // });
+  socket.on("new message", (data) => {
+    const room = data.room || data;
+    console.log("Nova mensagem recebida para sala:", room);
+    
+    // Emitir para todos na sala
     io.in(room).emit("refresh messages");
+    console.log("Evento refresh messages emitido para sala:", room);
   });
 
-  socket.off("setup", () => {
+  socket.off("setup", (userData) => {
     console.log("USER DISCONNECTED");
-    socket.leave(userData._id);
+    if (userData && userData._id) {
+      socket.leave(userData._id);
+    }
   });
 });

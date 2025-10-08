@@ -11,10 +11,11 @@ import ProfileModal from "./miscellaneous/ProfileModal";
 import ScrollableChat from "./ScrollableChat";
 import Lottie from "react-lottie";
 import animationData from "../animations/typing.json";
-import Cookies from "js-cookie";
 import io from "socket.io-client";
 import UpdateGroupChatModal from "./miscellaneous/UpdateGroupChatModal";
 import { ChatState } from "../Context/ChatProvider";
+import "./SingleChat.css";
+
 const ENDPOINT = "http://localhost:5000";
 var socket, selectedChatCompare;
 const forge = require("node-forge");
@@ -36,23 +37,47 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
       preserveAspectRatio: "xMidYMid slice",
     },
   };
-  const { selectedChat, setSelectedChat, user } =
+
+  const { selectedChat, setSelectedChat, user, notification, setNotification } =
     ChatState();
 
   const fetchMessages = async () => {
-    if (!selectedChat) return;
+    if (!selectedChat) {
+      console.log("fetchMessages: Nenhum chat selecionado");
+      return;
+    }
+    
+    console.log("fetchMessages: Buscando mensagens para chat:", selectedChat._id);
+    
     try {
       const config = {
         headers: {
           Authorization: `Bearer ${user.token}`,
         },
       };
-      // localStorage.setItem(`${user.name}_privateKey`, user.privateKey);
+      
       const userPrivateKey = localStorage.getItem(`${user.name}_privateKey`);
+      
+      if (!userPrivateKey) {
+        console.error("fetchMessages: Chave privada não encontrada!");
+        toast({
+          title: "Error!",
+          description: "Private key not found. Please login again.",
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+          position: "bottom",
+        });
+        return;
+      }
+
       const { data } = await axios.get(
         `/api/message/${selectedChat._id}`,
         config
       );
+      
+      console.log("fetchMessages: Mensagens recebidas do servidor:", data.length);
+      
       // Descriptografa as mensagens recebidas
       const decryptMessage = (encryptedMessage, privateKey) => {
         try {
@@ -67,16 +92,22 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
           return null;
         }
       };
-      const decryptedMessages = data.map((msg) => {
+      
+      const decryptedMessages = data.map((msg, index) => {
         const decryptedContent = decryptMessage(msg.content, userPrivateKey);
+        console.log(`fetchMessages: Mensagem ${index + 1} descriptografada:`, decryptedContent ? "Sucesso" : "Falhou");
         return {
           ...msg,
           content: decryptedContent || "Decryption failed",
         };
       });
+      
+      console.log("fetchMessages: Total de mensagens após descriptografia:", decryptedMessages.length);
+      
       setMessages(decryptedMessages);
       socket.emit("join chat", selectedChat._id);
     } catch (error) {
+      console.error("fetchMessages: Erro ao buscar mensagens:", error);
       toast({
         title: "Error Occured!",
         description: "Failed to Load the Messages",
@@ -90,8 +121,12 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
 
   const sendMessage = async (event) => {
     if (event.key === "Enter" && newMessage) {
-      console.log("Teste: ", newMessage);
+      console.log("\n=== ENVIANDO MENSAGEM ===");
+      console.log("sendMessage: Conteúdo:", newMessage);
+      console.log("sendMessage: Chat ID:", selectedChat._id);
+      
       socket.emit("stop typing", selectedChat._id);
+      
       try {
         const config = {
           headers: {
@@ -99,23 +134,67 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
             Authorization: `Bearer ${user.token}`,
           },
         };
+        
+        const messageToSend = newMessage;
         setNewMessage("");
-        console.log("Teste2: ", newMessage, " t", selectedChat._id);
-        const {data} = await axios.post(
+        
+        console.log("sendMessage: Fazendo requisição POST para /api/message");
+        
+        const { data } = await axios.post(
           "/api/message",
           {
-            content: newMessage,
+            content: messageToSend,
             chatId: selectedChat,
           },
           config
         );
-        setMessages([...messages, data]);
-
-        const cryptdata = await fetchMessages();
-        console.log(cryptdata);
-        //await fetchMessages();
-        socket.emit("new message", selectedChat._id);
+        
+        console.log("sendMessage: Resposta recebida do servidor:", data);
+        
+        // Descriptografar a mensagem antes de adicionar ao estado
+        const userPrivateKey = localStorage.getItem(`${user.name}_privateKey`);
+        
+        const decryptMessage = (encryptedMessage, privateKey) => {
+          try {
+            const privateKeyObj = forge.pki.privateKeyFromPem(privateKey);
+            const decryptedBytes = privateKeyObj.decrypt(
+              forge.util.decode64(encryptedMessage),
+              "RSA-OAEP"
+            );
+            return decryptedBytes;
+          } catch (error) {
+            console.error("Decryption error:", error);
+            return null;
+          }
+        };
+        
+        const decryptedContent = decryptMessage(data.content, userPrivateKey);
+        console.log("sendMessage: Mensagem descriptografada:", decryptedContent);
+        
+        const decryptedMessage = {
+          ...data,
+          content: decryptedContent || "Decryption failed",
+        };
+        
+        console.log("sendMessage: Adicionando mensagem ao estado local");
+        
+        // Adicionar a mensagem descriptografada ao estado
+        setMessages((prevMessages) => {
+          console.log("sendMessage: Mensagens antes:", prevMessages.length);
+          const newMessages = [...prevMessages, decryptedMessage];
+          console.log("sendMessage: Mensagens depois:", newMessages.length);
+          return newMessages;
+        });
+        
+        // Emitir evento de nova mensagem
+        console.log("sendMessage: Emitindo evento 'new message' para sala:", selectedChat._id);
+        socket.emit("new message", { room: selectedChat._id });
+        
+        console.log("=== ENVIO CONCLUÍDO ===\n");
+        
       } catch (error) {
+        console.error("sendMessage: ERRO ao enviar mensagem:", error);
+        console.error("sendMessage: Detalhes do erro:", error.response?.data);
         toast({
           title: "Error Occured!",
           description: "Failed to send the Message",
@@ -129,35 +208,66 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   };
 
   useEffect(() => {
+    console.log("useEffect: Inicializando socket");
     socket = io(ENDPOINT);
     socket.emit("setup", user);
-    socket.on("connected", () => setSocketConnected(true));
+    
+    socket.on("connected", () => {
+      console.log("useEffect: Socket conectado");
+      setSocketConnected(true);
+    });
+    
     socket.on("typing", () => setIsTyping(true));
     socket.on("stop typing", () => setIsTyping(false));
+    
+    return () => {
+      console.log("useEffect: Limpando listeners do socket");
+      socket.off("connected");
+      socket.off("typing");
+      socket.off("stop typing");
+    };
     // eslint-disable-next-line
   }, []);
 
   useEffect(() => {
+    console.log("useEffect: Chat selecionado mudou:", selectedChat?._id);
+    
     fetchMessages();
+    
+    // Remover listener antigo
+    socket.off("refresh messages");
+    
     socket.on("refresh messages", () => {
+      console.log("useEffect: Evento 'refresh messages' recebido");
       fetchMessages();
     });
+    
     selectedChatCompare = selectedChat;
+    
+    return () => {
+      console.log("useEffect: Removendo listener 'refresh messages'");
+      socket.off("refresh messages");
+    };
     // eslint-disable-next-line
   }, [selectedChat]);
 
   const typingHandler = (e) => {
     setNewMessage(e.target.value);
+    
     if (!socketConnected) return;
+    
     if (!typing) {
       setTyping(true);
       socket.emit("typing", selectedChat._id);
     }
+    
     let lastTypingTime = new Date().getTime();
     var timerLength = 3000;
+    
     setTimeout(() => {
       var timeNow = new Date().getTime();
       var timeDiff = timeNow - lastTypingTime;
+      
       if (timeDiff >= timerLength && typing) {
         socket.emit("stop typing", selectedChat._id);
         setTyping(false);
@@ -168,100 +278,93 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   return (
     <>
       {selectedChat ? (
-        <>
-          <Text
-            fontSize={{ base: "28px", md: "30px" }}
-            pb={3}
-            px={2}
-            w="100%"
-            fontFamily="Work sans"
-            d="flex"
-            justifyContent={{ base: "space-between" }}
-            alignItems="center"
-          >
-            <IconButton
-              d={{ base: "flex", md: "none" }}
-              icon={<ArrowBackIcon />}
-              onClick={() => setSelectedChat("")}
-            />
-            {messages &&
-              (!selectedChat.isGroupChat ? (
-                <>
-                  {getSender(user, selectedChat.users)}
-                  <ProfileModal
-                    user={getSenderFull(user, selectedChat.users)}
-                  />
-                </>
+        <div className="singlechat-container">
+          {/* Header do chat */}
+          <div className="chat-header">
+            <div className="chat-header-left">
+              <button
+                className="back-button"
+                onClick={() => setSelectedChat("")}
+              >
+                <ArrowBackIcon />
+              </button>
+              <h2 className="chat-header-title">
+                {!selectedChat.isGroupChat
+                  ? getSender(user, selectedChat.users)
+                  : selectedChat.chatName.toUpperCase()}
+              </h2>
+            </div>
+            <div className="chat-header-actions">
+              {!selectedChat.isGroupChat ? (
+                <ProfileModal user={getSenderFull(user, selectedChat.users)}>
+                  <button className="header-icon-btn">
+                    <i className="fas fa-info-circle"></i>
+                  </button>
+                </ProfileModal>
               ) : (
-                <>
-                  {selectedChat.chatName.toUpperCase()}
-                  <UpdateGroupChatModal
-                    fetchMessages={fetchMessages}
-                    fetchAgain={fetchAgain}
-                    setFetchAgain={setFetchAgain}
-                  />
-                </>
-              ))}
-          </Text>
-          <Box
-            d="flex"
-            flexDir="column"
-            justifyContent="flex-end"
-            p={3}
-            bg="#E8E8E8"
-            w="100%"
-            h="100%"
-            borderRadius="lg"
-            overflowY="hidden"
-          >
+                <UpdateGroupChatModal
+                  fetchMessages={fetchMessages}
+                  fetchAgain={fetchAgain}
+                  setFetchAgain={setFetchAgain}
+                >
+                  <button className="header-icon-btn">
+                    <i className="fas fa-cog"></i>
+                  </button>
+                </UpdateGroupChatModal>
+              )}
+            </div>
+          </div>
+
+          {/* Área de mensagens */}
+          <div className="messages-container">
             {loading ? (
-              <Spinner
-                size="xl"
-                w={20}
-                h={20}
-                alignSelf="center"
-                margin="auto"
-              />
-            ) : (
-              <div className="messages">
-                <ScrollableChat messages={messages} />
+              <div className="messages-loading">
+                <Spinner size="xl" color="#00a88e" />
               </div>
+            ) : (
+              <ScrollableChat messages={messages} />
             )}
 
-            <FormControl
-              onKeyDown={sendMessage}
-              id="first-name"
-              isRequired
-              mt={3}
-            >
-              {istyping ? (
-                <div>
-                  <Lottie
-                    options={defaultOptions}
-                    // height={50}
-                    width={70}
-                    style={{ marginBottom: 15, marginLeft: 0 }}
-                  />
-                </div>
-              ) : (
-                <></>
-              )}
-              <Input
-                variant="filled"
-                bg="#E0E0E0"
-                placeholder="Enter a message.."
+            {/* Indicador de digitação */}
+            {istyping && (
+              <div className="typing-indicator">
+                <div className="typing-dot"></div>
+                <div className="typing-dot"></div>
+                <div className="typing-dot"></div>
+              </div>
+            )}
+          </div>
+
+          {/* Input de mensagem */}
+          <div className="message-input-container">
+            <div className="message-input-wrapper">
+              <input
+                className="message-input"
+                placeholder="Enter a message..."
                 value={newMessage}
                 onChange={typingHandler}
+                onKeyDown={sendMessage}
               />
-            </FormControl>
-          </Box>
-        </>
+              <button
+                className="send-button"
+                onClick={(e) => {
+                  e.key = "Enter";
+                  sendMessage(e);
+                }}
+                disabled={!newMessage.trim()}
+              >
+                Send
+              </button>
+            </div>
+          </div>
+        </div>
       ) : (
-        <Box d="flex" alignItems="center" justifyContent="center" h="100%">
-          <Text fontSize="3xl" pb={3} fontFamily="Work sans">
+        <div className="empty-chat-state">
+          <div className="empty-chat-icon">💬</div>
+          <div className="empty-chat-text">
             Click on a user to start chatting
-          </Text>
-        </Box>
+          </div>
+        </div>
       )}
     </>
   );
