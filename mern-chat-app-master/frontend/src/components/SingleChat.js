@@ -5,12 +5,14 @@ import "./styles.css";
 import { IconButton, Spinner, useToast } from "@chakra-ui/react";
 import { getSender, getSenderFull } from "../config/ChatLogics";
 import { useEffect, useState } from "react";
+import { useHistory } from "react-router";
 import axios from "axios";
 import { ArrowBackIcon } from "@chakra-ui/icons";
 import ProfileModal from "./miscellaneous/ProfileModal";
 import ScrollableChat from "./ScrollableChat";
 import Lottie from "react-lottie";
 import animationData from "../animations/typing.json";
+import Cookies from "js-cookie";
 import io from "socket.io-client";
 import UpdateGroupChatModal from "./miscellaneous/UpdateGroupChatModal";
 import { ChatState } from "../Context/ChatProvider";
@@ -18,7 +20,81 @@ import "./SingleChat.css";
 
 const ENDPOINT = "http://localhost:5000";
 var socket, selectedChatCompare;
-const forge = require("node-forge");
+
+// FUNÇÕES DE SUPORTE PARA DECIFRAR A CHAVE PRIVADA SALVA
+const arrayBufferFromBase64 = (b64) => {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+};
+
+const deriveAesKeyForDecryption = async (password, salt, iterations, hash) => {
+  const enc = new TextEncoder();
+  const baseKey = await window.crypto.subtle.importKey(
+    "raw",
+    enc.encode(password),
+    "PBKDF2",
+    false,
+    ["deriveKey"]
+  );
+
+  return await window.crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt,
+      iterations,
+      hash,
+    },
+    baseKey,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["decrypt"]
+  );
+};
+
+// RECUPERAr E DECIFRAr A CHAVE PRIVADA CIFRADA
+const decryptStoredPrivateKey = async (password) => {
+  try {
+    const encryptedData = localStorage.getItem("cryptoreal_privateKey");
+    if (!encryptedData) {
+      console.warn("⚠️ Nenhuma chave privada encontrada no localStorage.");
+      return null;
+    }
+
+    const { cipher, iv, salt, iterations, hash } = JSON.parse(encryptedData);
+
+    const aesKey = await deriveAesKeyForDecryption(
+      password,
+      new Uint8Array(arrayBufferFromBase64(salt)),
+      iterations,
+      hash
+    );
+
+    const decrypted = await window.crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: new Uint8Array(arrayBufferFromBase64(iv)) },
+      aesKey,
+      arrayBufferFromBase64(cipher)
+    );
+
+    const privateKey = await window.crypto.subtle.importKey(
+      "pkcs8",
+      decrypted,
+      {
+        name: "RSA-OAEP",
+        hash: "SHA-256",
+      },
+      true,
+      ["decrypt"]
+    );
+
+    console.log("✅ Chave privada descriptografada com sucesso");
+    return privateKey;
+  } catch (err) {
+    console.error("❌ Erro ao descriptografar a chave privada:", err);
+    return null;
+  }
+};
 
 const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   const [messages, setMessages] = useState([]);
@@ -27,6 +103,8 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   const [socketConnected, setSocketConnected] = useState(false);
   const [typing, setTyping] = useState(false);
   const [istyping, setIsTyping] = useState(false);
+  const [privateKey, setPrivateKey] = useState(null);
+
   const toast = useToast();
 
   const defaultOptions = {
@@ -37,7 +115,6 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
       preserveAspectRatio: "xMidYMid slice",
     },
   };
-
   const { selectedChat, setSelectedChat, user, notification, setNotification } =
     ChatState();
 
@@ -46,71 +123,28 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
       console.log("fetchMessages: Nenhum chat selecionado");
       return;
     }
-    
+
     console.log("fetchMessages: Buscando mensagens para chat:", selectedChat._id);
-    
+
     try {
       const config = {
         headers: {
           Authorization: `Bearer ${user.token}`,
         },
       };
-      
-      const userPrivateKey = localStorage.getItem(`${user.name}_privateKey`);
-      
-      if (!userPrivateKey) {
-        console.error("fetchMessages: Chave privada não encontrada!");
-        toast({
-          title: "Error!",
-          description: "Private key not found. Please login again.",
-          status: "error",
-          duration: 5000,
-          isClosable: true,
-          position: "bottom",
-        });
-        return;
-      }
 
-      const { data } = await axios.get(
-        `/api/message/${selectedChat._id}`,
-        config
-      );
-      
-      console.log("fetchMessages: Mensagens recebidas do servidor:", data.length);
-      
-      // Descriptografa as mensagens recebidas
-      const decryptMessage = (encryptedMessage, privateKey) => {
-        try {
-          const privateKeyObj = forge.pki.privateKeyFromPem(privateKey);
-          const decryptedBytes = privateKeyObj.decrypt(
-            forge.util.decode64(encryptedMessage),
-            "RSA-OAEP"
-          );
-          return decryptedBytes;
-        } catch (error) {
-          console.error("Decryption error:", error);
-          return null;
-        }
-      };
-      
-      const decryptedMessages = data.map((msg, index) => {
-        const decryptedContent = decryptMessage(msg.content, userPrivateKey);
-        console.log(`fetchMessages: Mensagem ${index + 1} descriptografada:`, decryptedContent ? "Sucesso" : "Falhou");
-        return {
-          ...msg,
-          content: decryptedContent || "Decryption failed",
-        };
-      });
-      
-      console.log("fetchMessages: Total de mensagens após descriptografia:", decryptedMessages.length);
-      
-      setMessages(decryptedMessages);
+      const { data } = await axios.get(`/api/message/${selectedChat._id}`, config);
+      console.log("fetchMessages: Mensagens recebidas:", data.length);
+
+      // 🚫 Removido: descriptografia antiga com localStorage e decryptMessage()
+      // Vamos exibir as mensagens originais até a descriptografia real ser implementada
+      setMessages(data);
       socket.emit("join chat", selectedChat._id);
+
     } catch (error) {
-      console.error("fetchMessages: Erro ao buscar mensagens:", error);
       toast({
-        title: "Error Occured!",
-        description: "Failed to Load the Messages",
+        title: "Erro!",
+        description: "Falha ao carregar mensagens.",
         status: "error",
         duration: 5000,
         isClosable: true,
@@ -122,11 +156,10 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   const sendMessage = async (event) => {
     if (event.key === "Enter" && newMessage) {
       console.log("\n=== ENVIANDO MENSAGEM ===");
-      console.log("sendMessage: Conteúdo:", newMessage);
-      console.log("sendMessage: Chat ID:", selectedChat._id);
+      console.log("Conteúdo:", newMessage);
+      console.log("Chat ID:", selectedChat._id);
       
       socket.emit("stop typing", selectedChat._id);
-      
       try {
         const config = {
           headers: {
@@ -134,70 +167,30 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
             Authorization: `Bearer ${user.token}`,
           },
         };
-        
-        const messageToSend = newMessage;
         setNewMessage("");
-        
-        console.log("sendMessage: Fazendo requisição POST para /api/message");
-        
-        const { data } = await axios.post(
+        console.log("Teste2: ", newMessage, " t", selectedChat._id);
+        const {data} = await axios.post(
           "/api/message",
           {
-            content: messageToSend,
+            content: newMessage,
             chatId: selectedChat,
           },
           config
         );
         
         console.log("sendMessage: Resposta recebida do servidor:", data);
-        
-        // Descriptografar a mensagem antes de adicionar ao estado
-        const userPrivateKey = localStorage.getItem(`${user.name}_privateKey`);
-        
-        const decryptMessage = (encryptedMessage, privateKey) => {
-          try {
-            const privateKeyObj = forge.pki.privateKeyFromPem(privateKey);
-            const decryptedBytes = privateKeyObj.decrypt(
-              forge.util.decode64(encryptedMessage),
-              "RSA-OAEP"
-            );
-            return decryptedBytes;
-          } catch (error) {
-            console.error("Decryption error:", error);
-            return null;
-          }
-        };
-        
-        const decryptedContent = decryptMessage(data.content, userPrivateKey);
-        console.log("sendMessage: Mensagem descriptografada:", decryptedContent);
-        
-        const decryptedMessage = {
-          ...data,
-          content: decryptedContent || "Decryption failed",
-        };
-        
-        console.log("sendMessage: Adicionando mensagem ao estado local");
-        
-        // Adicionar a mensagem descriptografada ao estado
-        setMessages((prevMessages) => {
-          console.log("sendMessage: Mensagens antes:", prevMessages.length);
-          const newMessages = [...prevMessages, decryptedMessage];
-          console.log("sendMessage: Mensagens depois:", newMessages.length);
-          return newMessages;
-        });
-        
-        // Emitir evento de nova mensagem
-        console.log("sendMessage: Emitindo evento 'new message' para sala:", selectedChat._id);
+
+        // 🚫 Removido: decryptMessage com chave localStorage
+        setMessages((prev) => [...prev, data]);
+
         socket.emit("new message", { room: selectedChat._id });
-        
         console.log("=== ENVIO CONCLUÍDO ===\n");
         
       } catch (error) {
         console.error("sendMessage: ERRO ao enviar mensagem:", error);
-        console.error("sendMessage: Detalhes do erro:", error.response?.data);
         toast({
-          title: "Error Occured!",
-          description: "Failed to send the Message",
+          title: "Erro!",
+          description: "Falha ao enviar mensagem.",
           status: "error",
           duration: 5000,
           isClosable: true,
@@ -208,18 +201,32 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   };
 
   useEffect(() => {
-    console.log("useEffect: Inicializando socket");
+    const userInfo = JSON.parse(localStorage.getItem("userInfo"));
+    const password = userInfo?.password;
+
+    if (password) {
+      decryptStoredPrivateKey(password).then((key) => {
+        if (key) {
+          console.log("Chave privada pronta para uso no chat.");
+          setPrivateKey(key);
+        }
+      });
+    } else {
+      console.warn("Senha não disponível para descriptografia da chave privada.");
+    }
+
     socket = io(ENDPOINT);
     socket.emit("setup", user);
-    
+
     socket.on("connected", () => {
       console.log("useEffect: Socket conectado");
       setSocketConnected(true);
     });
     
+    socket.on("connected", () => setSocketConnected(true));
     socket.on("typing", () => setIsTyping(true));
     socket.on("stop typing", () => setIsTyping(false));
-    
+
     return () => {
       console.log("useEffect: Limpando listeners do socket");
       socket.off("connected");
@@ -229,45 +236,28 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     // eslint-disable-next-line
   }, []);
 
+
   useEffect(() => {
-    console.log("useEffect: Chat selecionado mudou:", selectedChat?._id);
-    
     fetchMessages();
-    
-    // Remover listener antigo
-    socket.off("refresh messages");
-    
     socket.on("refresh messages", () => {
-      console.log("useEffect: Evento 'refresh messages' recebido");
       fetchMessages();
     });
-    
     selectedChatCompare = selectedChat;
-    
-    return () => {
-      console.log("useEffect: Removendo listener 'refresh messages'");
-      socket.off("refresh messages");
-    };
     // eslint-disable-next-line
   }, [selectedChat]);
 
   const typingHandler = (e) => {
     setNewMessage(e.target.value);
-    
     if (!socketConnected) return;
-    
     if (!typing) {
       setTyping(true);
       socket.emit("typing", selectedChat._id);
     }
-    
     let lastTypingTime = new Date().getTime();
     var timerLength = 3000;
-    
     setTimeout(() => {
       var timeNow = new Date().getTime();
       var timeDiff = timeNow - lastTypingTime;
-      
       if (timeDiff >= timerLength && typing) {
         socket.emit("stop typing", selectedChat._id);
         setTyping(false);
