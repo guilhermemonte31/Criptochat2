@@ -138,6 +138,8 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
 
       // 🚫 Removido: descriptografia antiga com localStorage e decryptMessage()
       // Vamos exibir as mensagens originais até a descriptografia real ser implementada
+      
+      console.log("teste chave privada: ", privateKey);
       setMessages(data);
       socket.emit("join chat", selectedChat._id);
 
