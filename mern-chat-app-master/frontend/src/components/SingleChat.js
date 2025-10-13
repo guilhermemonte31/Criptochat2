@@ -47,7 +47,7 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
       return;
     }
     
-    console.log("fetchMessages: Buscando mensagens para chat:", selectedChat._id);
+    console.log("** Buscando mensagens para chat:", selectedChat._id);
     
     try {
       const config = {
@@ -76,7 +76,7 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
         config
       );
       
-      console.log("fetchMessages: Mensagens recebidas do servidor:", data.length);
+      console.log("** Mensagens recebidas do servidor:", data.length);
       
       // Descriptografa as mensagens recebidas
       const decryptMessage = (encryptedMessage, privateKey) => {
@@ -93,16 +93,17 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
         }
       };
       
+      //descriptografando mensagens do banco com a chave privada do usuario
       const decryptedMessages = data.map((msg, index) => {
         const decryptedContent = decryptMessage(msg.content, userPrivateKey);
-        console.log(`fetchMessages: Mensagem ${index + 1} descriptografada:`, decryptedContent ? "Sucesso" : "Falhou");
+        //console.log(`fetchMessages: Mensagem ${index + 1} descriptografada:`, decryptedContent ? "Sucesso" : "Falhou");
         return {
           ...msg,
           content: decryptedContent || "Decryption failed",
         };
       });
       
-      console.log("fetchMessages: Total de mensagens após descriptografia:", decryptedMessages.length);
+      console.log("**Total de mensagens descriptografadas:", decryptedMessages.length);
       
       setMessages(decryptedMessages);
       socket.emit("join chat", selectedChat._id);
@@ -122,7 +123,7 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   const sendMessage = async (event) => {
     if (event.key === "Enter" && newMessage) {
       console.log("\n=== ENVIANDO MENSAGEM ===");
-      console.log("sendMessage: Conteúdo:", newMessage);
+      //console.log("sendMessage: Conteúdo:", newMessage);
       console.log("sendMessage: Chat ID:", selectedChat._id);
       
       socket.emit("stop typing", selectedChat._id);
@@ -138,7 +139,7 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
         const messageToSend = newMessage;
         setNewMessage("");
         
-        console.log("sendMessage: Fazendo requisição POST para /api/message");
+        //console.log("sendMessage: Fazendo requisição POST para /api/message");
         
         const { data } = await axios.post(
           "/api/message",
@@ -149,7 +150,7 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
           config
         );
         
-        console.log("sendMessage: Resposta recebida do servidor:", data);
+        //console.log("sendMessage: Resposta recebida do servidor:", data);
         
         // Descriptografar a mensagem antes de adicionar ao estado
         const userPrivateKey = localStorage.getItem(`${user.name}_privateKey`);
@@ -169,14 +170,14 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
         };
         
         const decryptedContent = decryptMessage(data.content, userPrivateKey);
-        console.log("sendMessage: Mensagem descriptografada:", decryptedContent);
+        console.log("** Mensagem descriptografada:", decryptedContent);
         
         const decryptedMessage = {
           ...data,
           content: decryptedContent || "Decryption failed",
         };
         
-        console.log("sendMessage: Adicionando mensagem ao estado local");
+        //console.log("sendMessage: Adicionando mensagem ao estado local");
         
         // Adicionar a mensagem descriptografada ao estado
         setMessages((prevMessages) => {
@@ -187,7 +188,7 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
         });
         
         // Emitir evento de nova mensagem
-        console.log("sendMessage: Emitindo evento 'new message' para sala:", selectedChat._id);
+        //console.log("sendMessage: Emitindo evento 'new message' para sala:", selectedChat._id);
         socket.emit("new message", { room: selectedChat._id });
         
         console.log("=== ENVIO CONCLUÍDO ===\n");
@@ -208,12 +209,12 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   };
 
   useEffect(() => {
-    console.log("useEffect: Inicializando socket");
+    //console.log("useEffect: Inicializando socket");
     socket = io(ENDPOINT);
     socket.emit("setup", user);
     
     socket.on("connected", () => {
-      console.log("useEffect: Socket conectado");
+      //console.log("useEffect: Socket conectado");
       setSocketConnected(true);
     });
     
@@ -221,7 +222,7 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     socket.on("stop typing", () => setIsTyping(false));
     
     return () => {
-      console.log("useEffect: Limpando listeners do socket");
+      //console.log("useEffect: Limpando listeners do socket");
       socket.off("connected");
       socket.off("typing");
       socket.off("stop typing");
@@ -230,7 +231,7 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   }, []);
 
   useEffect(() => {
-    console.log("useEffect: Chat selecionado mudou:", selectedChat?._id);
+    //console.log("useEffect: Chat selecionado mudou:", selectedChat?._id);
     
     fetchMessages();
     
@@ -238,14 +239,14 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     socket.off("refresh messages");
     
     socket.on("refresh messages", () => {
-      console.log("useEffect: Evento 'refresh messages' recebido");
+      //console.log("useEffect: Evento 'refresh messages' recebido");
       fetchMessages();
     });
     
     selectedChatCompare = selectedChat;
     
     return () => {
-      console.log("useEffect: Removendo listener 'refresh messages'");
+      //console.log("useEffect: Removendo listener 'refresh messages'");
       socket.off("refresh messages");
     };
     // eslint-disable-next-line

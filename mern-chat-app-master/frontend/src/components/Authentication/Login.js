@@ -83,10 +83,7 @@ const Login = () => {
     }
   };
 
-  const handleGuestLogin = () => {
-    setEmail("guest@example.com");
-    setPassword("123456");
-  };
+  
 
   return (
     <>

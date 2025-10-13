@@ -14,11 +14,8 @@ const Signup = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmpassword, setConfirmpassword] = useState("");
-  const [pic, setPic] = useState();
-  const [picLoading, setPicLoading] = useState(false);
 
   const submitHandler = async () => {
-    setPicLoading(true);
     if (!name || !email || !password || !confirmpassword) {
       toast({
         title: "Please Fill all the Fields",
@@ -27,7 +24,6 @@ const Signup = () => {
         isClosable: true,
         position: "bottom",
       });
-      setPicLoading(false);
       return;
     }
     if (password !== confirmpassword) {
@@ -38,7 +34,6 @@ const Signup = () => {
         isClosable: true,
         position: "bottom",
       });
-      setPicLoading(false);
       return;
     }
 
@@ -46,6 +41,8 @@ const Signup = () => {
       const keypair = forge.pki.rsa.generateKeyPair({ bits: 2048 });
       const publicKeyPem = forge.pki.publicKeyToPem(keypair.publicKey);
       const privateKeyPem = forge.pki.privateKeyToPem(keypair.privateKey);
+
+      console.log("** par de chaves gerado - chave publica enviada para o servidor: ", publicKeyPem);
 
       const config = {
         headers: {
@@ -59,7 +56,6 @@ const Signup = () => {
           name,
           email,
           password,
-          pic,
           publicKey: publicKeyPem,
         },
         config
@@ -74,9 +70,9 @@ const Signup = () => {
       });
 
       localStorage.setItem(`${name}_privateKey`, privateKeyPem);
+      console.log("**chave privada armazenada no localstorage");
       localStorage.setItem("userInfo", JSON.stringify(data));
-      setPicLoading(false);
-      history.push("/chats");
+      history.push("/");
     } catch (error) {
       toast({
         title: "Error Occurred!",
@@ -86,53 +82,9 @@ const Signup = () => {
         isClosable: true,
         position: "bottom",
       });
-      setPicLoading(false);
     }
   };
 
-  const postDetails = (pics) => {
-    setPicLoading(true);
-    if (pics === undefined) {
-      toast({
-        title: "Please Select an Image!",
-        status: "warning",
-        duration: 5000,
-        isClosable: true,
-        position: "bottom",
-      });
-      setPicLoading(false);
-      return;
-    }
-
-    if (pics.type === "image/jpeg" || pics.type === "image/png") {
-      const data = new FormData();
-      data.append("file", pics);
-      data.append("upload_preset", "chat-app");
-      data.append("cloud_name", "piyushproj");
-      fetch("https://api.cloudinary.com/v1_1/piyushproj/image/upload", {
-        method: "post",
-        body: data,
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          setPic(data.url.toString());
-          setPicLoading(false);
-        })
-        .catch((err) => {
-          console.log(err);
-          setPicLoading(false);
-        });
-    } else {
-      toast({
-        title: "Please Select an Image!",
-        status: "warning",
-        duration: 5000,
-        isClosable: true,
-        position: "bottom",
-      });
-      setPicLoading(false);
-    }
-  };
 
   return (
     <>
@@ -197,27 +149,11 @@ const Signup = () => {
         </div>
       </div>
 
-      <div className="form-group">
-        <label className="form-label">Upload your Picture</label>
-        <div className="file-input-wrapper">
-          <input
-            type="file"
-            id="pic-upload"
-            accept="image/*"
-            onChange={(e) => postDetails(e.target.files[0])}
-          />
-          <label htmlFor="pic-upload" className="file-input-label">
-            {pic ? "Image Selected ✓" : "Choose File"}
-          </label>
-        </div>
-      </div>
 
       <button
         className="btn btn-signup"
         onClick={submitHandler}
-        disabled={picLoading}
       >
-        {picLoading && <span className="spinner"></span>}
         Sign Up
       </button>
     </>

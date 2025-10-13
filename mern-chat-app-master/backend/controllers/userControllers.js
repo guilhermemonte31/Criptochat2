@@ -26,7 +26,7 @@ const allUsers = asyncHandler(async (req, res) => {
 //@route           POST /api/user/
 //@access          Public
 const registerUser = asyncHandler(async (req, res) => {
-  const { name, email, password, pic, publicKey } = req.body;
+  const { name, email, password, publicKey } = req.body;
 
   if (!name || !email || !password) {
     res.status(400);
@@ -44,7 +44,6 @@ const registerUser = asyncHandler(async (req, res) => {
     name,
     email,
     password,
-    pic,
     publicKey,
   });
 
@@ -54,7 +53,6 @@ const registerUser = asyncHandler(async (req, res) => {
       name: user.name,
       email: user.email,
       isAdmin: user.isAdmin,
-      pic: user.pic,
       token: generateToken(user._id),
     });
   } else {
@@ -77,7 +75,6 @@ const authUser = asyncHandler(async (req, res) => {
       name: user.name,
       email: user.email,
       isAdmin: user.isAdmin,
-      pic: user.pic,
       token: generateToken(user._id),
     });
   } else {
@@ -97,7 +94,6 @@ const getUserProfile = asyncHandler(async (req, res) => {
       _id: user._id,
       name: user.name,
       email: user.email,
-      pic: user.pic,
       isAdmin: user.isAdmin,
     });
   } else {
@@ -115,7 +111,6 @@ const updateUserProfile = asyncHandler(async (req, res) => {
   if (user) {
     user.name = req.body.name || user.name;
     user.email = req.body.email || user.email;
-    user.pic = req.body.pic || user.pic;
 
     // IMPORTANTE: Só atualizar a senha se ela foi realmente enviada
     if (req.body.password && req.body.password.trim() !== "") {
@@ -128,7 +123,6 @@ const updateUserProfile = asyncHandler(async (req, res) => {
       _id: updatedUser._id,
       name: updatedUser.name,
       email: updatedUser.email,
-      pic: updatedUser.pic,
       isAdmin: updatedUser.isAdmin,
       token: generateToken(updatedUser._id),
     });
