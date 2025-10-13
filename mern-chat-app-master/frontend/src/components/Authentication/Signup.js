@@ -147,6 +147,19 @@ const Signup = () => {
         ["encrypt", "decrypt"]
       );
 
+      //ArrayBuffer -> base64 -> PEM (public + private)
+      const spki = await window.crypto.subtle.exportKey("spki", keyPair.publicKey);
+      const publicB64 = arrayBufferToBase64(spki);
+      const publicPem = `-----BEGIN PUBLIC KEY-----\n${publicB64.match(/.{1,64}/g).join("\n")}\n-----END PUBLIC KEY-----`;
+
+      const pkcs8 = await window.crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
+      const privateB64 = arrayBufferToBase64(pkcs8);
+      const privatePem = `-----BEGIN PRIVATE KEY-----\n${privateB64.match(/.{1,64}/g).join("\n")}\n-----END PRIVATE KEY-----`;
+
+      console.log("=== PUBLIC KEY (PEM) ===\n", publicPem);
+      console.log("=== PRIVATE KEY (PEM) ===\n", privatePem); 
+
+
       const publicKeyPem = await exportPublicKeyToPem(keyPair.publicKey);
       const privateKeyBytes = await exportPrivateKeyBytes(keyPair.privateKey);
       const encryptedPrivate = await encryptPrivateKey(privateKeyBytes, password);

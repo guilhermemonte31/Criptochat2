@@ -82,6 +82,7 @@ const decryptStoredPrivateKey = async (password) => {
 
 const encryptMessageForUser = async (message, publicKeyPem) => {
   console.log("1 - Iniciando criptografia para destinatário...");
+  console.log("Chave publica do destinatário:\n", publicKeyPem);
   const pemBody = publicKeyPem
     .replace("-----BEGIN PUBLIC KEY-----", "")
     .replace("-----END PUBLIC KEY-----", "")
