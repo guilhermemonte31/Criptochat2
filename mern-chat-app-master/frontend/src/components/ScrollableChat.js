@@ -48,7 +48,11 @@ const ScrollableChat = ({ messages }) => {
               )}
 
             {/* Bolha da mensagem */}
-            <div className="message-bubble">{m.content}</div>
+            <div className="message-bubble">
+              {m.decrypted && !m.decrypted.startsWith("-----BEGIN") 
+              ? m.decrypted 
+              : "[Mensagem criptografada]"}
+            </div>
           </div>
         ))}
     </ScrollableFeed>

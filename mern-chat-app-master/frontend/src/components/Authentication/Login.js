@@ -123,7 +123,13 @@ const Login = () => {
       // Descriptografa a chave privada com a senha
       let privateKey;
       try {
-      privateKey = await decryptPrivateKey(encryptedPrivateKey, password);
+        privateKey = await decryptPrivateKey(encryptedPrivateKey, password);
+
+        const privateKeyJwk = await crypto.subtle.exportKey("jwk", privateKey);
+
+        sessionStorage.setItem("privateKeyJwk", JSON.stringify(privateKeyJwk));
+        console.log("💾 Chave privada armazenada no sessionStorage.");
+
       } catch (e) {
         console.error("Decryption failed:", e);
         toast({
@@ -137,17 +143,6 @@ const Login = () => {
         return;
       }
 
-      toast({
-      title: "Login Successful",
-      status: "success",
-      duration: 5000,
-      isClosable: true,
-      position: "bottom",
-      });
-
-      // Guarda o usuário e a chave descriptografada na memória
-      setUser({ ...data, privateKey });
-
       if (data.publicKey) {
         const publicKey = await crypto.subtle.importKey(
           "spki",
@@ -159,7 +154,18 @@ const Login = () => {
         setUser({ ...data, privateKey, publicKey });
       }
 
+      toast({
+        title: "Login Successful",
+        status: "success",
+        duration: 5000,
+        isClosable: true,
+        position: "bottom",
+      });
+
+      // Guarda o usuário e a chave descriptografada na memória
+      setUser({ ...data, privateKey });
       localStorage.setItem("userInfo", JSON.stringify(data));
+      
       setLoading(false);
       history.push("/chats");
       } catch (error) {
