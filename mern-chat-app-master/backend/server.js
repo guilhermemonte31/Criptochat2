@@ -102,7 +102,14 @@ io.on("connection", (socket) => {
   // Nova mensagem enviada → atualizar os usuários do chat
   socket.on("new message", (data) => {
     console.log(`📨 Nova mensagem recebida no servidor (sala ${data.room})`);
-    io.to(data.room).emit("message received", data);
+
+    const chat = data.chat;
+    if (!chat?.users) return console.warn("Chat sem lista de usuários.");
+
+    chat.users.forEach((user) => {
+      if (user._id === data.sender._id) return; // não reenviar ao remetente
+      io.to(user._id).emit("message received", data); // envia diretamente para o destinatário
+    });
   });
 
   socket.on("disconnect", () => console.log("🔴 Cliente desconectado"));
