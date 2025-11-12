@@ -11,7 +11,7 @@ import { ChatState } from "../../Context/ChatProvider";
 // Função auxiliar para derivar a chave AES da senha
 async function deriveAesKey(password, salt) {
   const enc = new TextEncoder();
-    const keyMaterial = await crypto.subtle.importKey(
+  const keyMaterial = await crypto.subtle.importKey(
     "raw",
     enc.encode(password),
     { name: "PBKDF2" },
@@ -35,9 +35,13 @@ async function deriveAesKey(password, salt) {
 
 // Função para descriptografar a chave privada armazenada
 async function decryptPrivateKey(encryptedData, password) {
-  const salt = Uint8Array.from(atob(encryptedData.salt), c => c.charCodeAt(0));
-  const iv = Uint8Array.from(atob(encryptedData.iv), c => c.charCodeAt(0));
-  const cipherBytes = Uint8Array.from(atob(encryptedData.cipher), c => c.charCodeAt(0));
+  const salt = Uint8Array.from(atob(encryptedData.salt), (c) =>
+    c.charCodeAt(0)
+  );
+  const iv = Uint8Array.from(atob(encryptedData.iv), (c) => c.charCodeAt(0));
+  const cipherBytes = Uint8Array.from(atob(encryptedData.cipher), (c) =>
+    c.charCodeAt(0)
+  );
 
   const aesKey = await deriveAesKey(password, salt);
   let decrypted;
@@ -64,7 +68,6 @@ async function decryptPrivateKey(encryptedData, password) {
     ["decrypt"]
   );
 }
-
 
 const Login = () => {
   const [show, setShow] = useState(false);
@@ -104,9 +107,11 @@ const Login = () => {
         config
       );
 
-      const encryptedPrivateKeyJson = localStorage.getItem(`${data.name}_privateKey`);
-        if (!encryptedPrivateKeyJson) {
-          toast({
+      const encryptedPrivateKeyJson = localStorage.getItem(
+        `${data.name}_privateKey`
+      );
+      if (!encryptedPrivateKeyJson) {
+        toast({
           title: "Private Key Not Found",
           description: "Please sign up again to generate encryption keys.",
           status: "error",
@@ -125,11 +130,43 @@ const Login = () => {
       try {
         privateKey = await decryptPrivateKey(encryptedPrivateKey, password);
 
+        // Exporta para JWK para armazenamento
         const privateKeyJwk = await crypto.subtle.exportKey("jwk", privateKey);
 
-        sessionStorage.setItem("privateKeyJwk", JSON.stringify(privateKeyJwk));
-        console.log("💾 Chave privada armazenada no sessionStorage.");
+        // Valida que a chave JWK contém todos os componentes necessários
+        if (!privateKeyJwk.d || !privateKeyJwk.n || !privateKeyJwk.e) {
+          throw new Error("Invalid JWK export: Missing private key components");
+        }
 
+        // Extrai também a chave pública do JWK para validação futura
+        const publicKeyJwk = {
+          kty: privateKeyJwk.kty,
+          n: privateKeyJwk.n,
+          e: privateKeyJwk.e,
+          alg: "RSA-OAEP",
+          hash: "SHA-256",
+        };
+
+        // Também armazena o objeto encrypted original como backup
+        sessionStorage.setItem("privateKeyJwk", JSON.stringify(privateKeyJwk));
+        sessionStorage.setItem("publicKeyJwk", JSON.stringify(publicKeyJwk));
+        sessionStorage.setItem(
+          "encryptedPrivateKey",
+          JSON.stringify(encryptedPrivateKey)
+        );
+        sessionStorage.setItem("loginPassword", password); // Para redecorar se necessário
+
+        console.log("💾 Chave privada armazenada no sessionStorage");
+        console.log("📋 JWK components:", {
+          kty: privateKeyJwk.kty,
+          has_d: !!privateKeyJwk.d,
+          has_n: !!privateKeyJwk.n,
+          has_e: !!privateKeyJwk.e,
+          has_p: !!privateKeyJwk.p,
+          has_q: !!privateKeyJwk.q,
+          modulus_n: privateKeyJwk.n.substring(0, 50) + "...",
+          exponent_e: privateKeyJwk.e,
+        });
       } catch (e) {
         console.error("Decryption failed:", e);
         toast({
@@ -146,7 +183,7 @@ const Login = () => {
       if (data.publicKey) {
         const publicKey = await crypto.subtle.importKey(
           "spki",
-          Uint8Array.from(atob(data.publicKey), c => c.charCodeAt(0)),
+          Uint8Array.from(atob(data.publicKey), (c) => c.charCodeAt(0)),
           { name: "RSA-OAEP", hash: "SHA-256" },
           true,
           ["encrypt"]
@@ -165,21 +202,21 @@ const Login = () => {
       // Guarda o usuário e a chave descriptografada na memória
       setUser({ ...data, privateKey });
       localStorage.setItem("userInfo", JSON.stringify(data));
-      
+
       setLoading(false);
       history.push("/chats");
-      } catch (error) {
-        toast({
-          title: "Error Occurred!",
-          description: error.response?.data?.message || "Login failed",
-          status: "error",
-          duration: 5000,
-          isClosable: true,
-          position: "bottom",
-        });
-        setLoading(false);
-      }
-    };
+    } catch (error) {
+      toast({
+        title: "Error Occurred!",
+        description: error.response?.data?.message || "Login failed",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+        position: "bottom",
+      });
+      setLoading(false);
+    }
+  };
 
   const handleGuestLogin = () => {
     setEmail("guest@example.com");

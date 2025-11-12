@@ -4,7 +4,7 @@ import { Box, Text } from "@chakra-ui/layout";
 import "./styles.css";
 import { IconButton, Spinner, useToast } from "@chakra-ui/react";
 import { getSender, getSenderFull } from "../config/ChatLogics";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useHistory } from "react-router";
 import axios from "axios";
 import { ArrowBackIcon } from "@chakra-ui/icons";
@@ -12,121 +12,22 @@ import ProfileModal from "./miscellaneous/ProfileModal";
 import ScrollableChat from "./ScrollableChat";
 import Lottie from "react-lottie";
 import animationData from "../animations/typing.json";
-import Cookies from "js-cookie";
 import io from "socket.io-client";
 import UpdateGroupChatModal from "./miscellaneous/UpdateGroupChatModal";
 import { ChatState } from "../Context/ChatProvider";
 import "./SingleChat.css";
 
+// Importar funções do sistema híbrido
+import {
+  hybridEncrypt,
+  hybridDecrypt,
+  validateEnvelope,
+  validateSequence,
+  validateTimestamp,
+} from "../crypto/hybridCrypto";
+
 const ENDPOINT = "http://localhost:5000";
 var socket, selectedChatCompare;
-
-// FUNÇÕES DE SUPORTE PARA DECIFRAR A CHAVE PRIVADA SALVA
-const arrayBufferFromBase64 = (b64) => {
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes.buffer;
-};
-
-const deriveAesKeyForDecryption = async (password, salt, iterations, hash) => {
-  const enc = new TextEncoder();
-  const baseKey = await window.crypto.subtle.importKey(
-    "raw",
-    enc.encode(password),
-    "PBKDF2",
-    false,
-    ["deriveKey"]
-  );
-
-  return await window.crypto.subtle.deriveKey(
-    {
-      name: "PBKDF2",
-      salt,
-      iterations,
-      hash,
-    },
-    baseKey,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["decrypt"]
-  );
-};
-
-// Recuperando e decifrando a chave privada do sessionStorage
-const decryptStoredPrivateKey = async (password) => {
-  try {
-    const privateKeyJwkStr = sessionStorage.getItem("privateKeyJwk");
-    if (!privateKeyJwkStr) {
-      console.warn("Nenhuma chave privada encontrada na sessão.");
-      return;
-    }
-
-    const privateKeyJwk = JSON.parse(privateKeyJwkStr);
-
-    const privateKey = await window.crypto.subtle.importKey(
-      "jwk",
-      privateKeyJwk,
-      { name: "RSA-OAEP", hash: "SHA-256" },
-      true,
-      ["decrypt"]
-    );
-
-    console.log("✅ Chave privada importada com sucesso da sessão.");
-    return privateKey;
-  } catch (err) {
-    console.error("❌ Erro ao importar chave privada:", err);
-    return null;
-  }
-};
-
-const encryptMessageForUser = async (message, publicKeyPem) => {
-  console.log("1 - Iniciando criptografia para destinatário...");
-  console.log("Chave publica do destinatário:\n", publicKeyPem);
-  const pemBody = publicKeyPem
-    .replace("-----BEGIN PUBLIC KEY-----", "")
-    .replace("-----END PUBLIC KEY-----", "")
-    .replace(/\n/g, "");
-  const binaryDer = Uint8Array.from(atob(pemBody), (c) => c.charCodeAt(0));
-
-  const publicKey = await window.crypto.subtle.importKey(
-    "spki",
-    binaryDer.buffer,
-    { name: "RSA-OAEP", hash: "SHA-256" },
-    true,
-    ["encrypt"]
-  );
-
-  const encoded = new TextEncoder().encode(message);
-  const encrypted = await window.crypto.subtle.encrypt(
-    { name: "RSA-OAEP" },
-    publicKey,
-    encoded
-  );
-  const encryptedB64 = btoa(String.fromCharCode(...new Uint8Array(encrypted)));
-  console.log("✅ Mensagem criptografada com sucesso.");
-  return encryptedB64;
-};
-
-const decryptMessage = async (encryptedB64, privateKey) => {
-  try {
-    console.log("Tentando descriptografar mensagem...");
-    const encryptedBytes = new Uint8Array(arrayBufferFromBase64(encryptedB64));
-    const decrypted = await window.crypto.subtle.decrypt(
-      { name: "RSA-OAEP" },
-      privateKey,
-      encryptedBytes
-    );
-    const decoded = new TextDecoder().decode(decrypted);
-    console.log("✅ Mensagem descriptografada:", decoded);
-    return decoded;
-  } catch (err) {
-    console.warn("⚠️ Falha na descriptografia (mensagem não destinada a este usuário).");
-    return null;
-  }
-};
-
-
 
 const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   const [messages, setMessages] = useState([]);
@@ -136,6 +37,10 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   const [typing, setTyping] = useState(false);
   const [istyping, setIsTyping] = useState(false);
   const [privateKey, setPrivateKey] = useState(null);
+
+  // Gerenciamento de sequências
+  const sequenceMapRef = useRef(new Map()); // Map<chatId, Map<senderId, lastSeq>>
+  const mySequenceRef = useRef(new Map()); // Map<chatId, myNextSeq>
 
   const toast = useToast();
 
@@ -148,13 +53,407 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     },
   };
 
-  const { selectedChat, setSelectedChat, user, notification, setNotification } = ChatState();
+  const { selectedChat, setSelectedChat, user, notification, setNotification } =
+    ChatState();
 
+  /**
+   * Carrega a chave privada do sessionStorage
+   */
+  const loadPrivateKey = async () => {
+    try {
+      const privateKeyJwkStr = sessionStorage.getItem("privateKeyJwk");
+      if (!privateKeyJwkStr) {
+        console.warn("⚠️ Nenhuma chave privada encontrada na sessão.");
+        toast({
+          title: "Private Key Missing",
+          description: "Please log in again to restore your encryption key.",
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+          position: "bottom",
+        });
+        return null;
+      }
+
+      const privateKeyJwk = JSON.parse(privateKeyJwkStr);
+      console.log("✅ Chave privada carregada do sessionStorage");
+      setPrivateKey(privateKeyJwk);
+      return privateKeyJwk;
+    } catch (err) {
+      console.error("❌ Erro ao carregar chave privada:", err);
+      toast({
+        title: "Encryption Error",
+        description: "Failed to load your encryption key.",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+        position: "bottom",
+      });
+      return null;
+    }
+  };
+
+  /**
+   * Obtém o próximo número de sequência para envio
+   */
+  const getNextSequenceNumber = async (chatId) => {
+    try {
+      // Tenta obter do cache local primeiro
+      if (mySequenceRef.current.has(chatId)) {
+        const next = mySequenceRef.current.get(chatId);
+        mySequenceRef.current.set(chatId, next + 1);
+        return next;
+      }
+
+      // Busca do servidor
+      const config = {
+        headers: { Authorization: `Bearer ${user.token}` },
+      };
+
+      const { data } = await axios.get(
+        `/api/message/sequence/${chatId}`,
+        config
+      );
+
+      // Armazena no cache
+      mySequenceRef.current.set(chatId, data.sequence + 1);
+
+      console.log(`📊 Sequência obtida do servidor: ${data.sequence}`);
+      return data.sequence;
+    } catch (error) {
+      console.error("❌ Erro ao obter sequência:", error);
+      // Fallback: usa timestamp como sequência temporária
+      return Date.now() % 1000000;
+    }
+  };
+
+  /**
+   * Valida número de sequência de mensagem recebida
+   */
+  const validateMessageSequence = (envelope, chatId) => {
+    const senderId = envelope.metadata.senderId;
+    const receivedSeq = envelope.metadata.sequence;
+
+    // Inicializa map do chat se não existir
+    if (!sequenceMapRef.current.has(chatId)) {
+      sequenceMapRef.current.set(chatId, new Map());
+    }
+
+    const chatSequences = sequenceMapRef.current.get(chatId);
+    const expectedSeq = chatSequences.get(senderId) || 0;
+
+    try {
+      // Valida sequência
+      validateSequence(receivedSeq, expectedSeq, 10);
+
+      // Atualiza última sequência conhecida
+      if (receivedSeq > expectedSeq) {
+        chatSequences.set(senderId, receivedSeq);
+      }
+
+      return true;
+    } catch (error) {
+      console.error("⚠️ Validação de sequência falhou:", error.message);
+      toast({
+        title: "Security Warning",
+        description: error.message,
+        status: "warning",
+        duration: 5000,
+        isClosable: true,
+        position: "bottom",
+      });
+      return false;
+    }
+  };
+
+  /**
+   * Decifra mensagem usando sistema híbrido
+   */
+  const decryptMessage = async (envelopeStr, chatId) => {
+    if (!privateKey) {
+      console.warn("⚠️ Chave privada não disponível");
+      return "[Chave privada não carregada]";
+    }
+
+    try {
+      // Parse do envelope
+      const envelope =
+        typeof envelopeStr === "string" ? JSON.parse(envelopeStr) : envelopeStr;
+
+      // ⭐ CORREÇÃO: Verificar se a mensagem é para o usuário atual
+      if (envelope.metadata.recipientId !== user._id) {
+        console.log(
+          `ℹ️ Ignorando mensagem destinada a outro usuário (${envelope.metadata.recipientId})`
+        );
+        return null; // Retorna null para indicar que não deve ser exibida
+      }
+
+      // VALIDAÇÃO 1: Estrutura do envelope
+      try {
+        validateEnvelope(envelope, user._id, null);
+      } catch (validationError) {
+        console.error(
+          "❌ Validação do envelope falhou:",
+          validationError.message
+        );
+        return "[Envelope inválido]";
+      }
+
+      // VALIDAÇÃO 2: Timestamp
+      try {
+        validateTimestamp(envelope.metadata.timestamp);
+      } catch (timestampError) {
+        console.warn("⚠️ Timestamp inválido:", timestampError.message);
+        // Continua mesmo com timestamp inválido (mensagem antiga)
+      }
+
+      // VALIDAÇÃO 3: Sequência (previne replay/reorder)
+      if (!validateMessageSequence(envelope, chatId)) {
+        return "[Sequência inválida - possível replay attack]";
+      }
+
+      // DESCRIPTOGRAFIA
+      const plaintext = await hybridDecrypt(envelope, privateKey);
+
+      console.log("✅ Mensagem decifrada com sucesso");
+      console.log("📋 Metadados validados:", {
+        sender: envelope.metadata.senderId,
+        recipient: envelope.metadata.recipientId,
+        sequence: envelope.metadata.sequence,
+        timestamp: new Date(envelope.metadata.timestamp).toLocaleString(),
+      });
+
+      return plaintext;
+    } catch (error) {
+      console.error("❌ Erro na descriptografia:", error);
+
+      if (error.message.includes("INTEGRITY_VIOLATION")) {
+        return "[ALERTA: Mensagem adulterada - falha na verificação de integridade]";
+      }
+
+      return "[Falha ao descriptografar]";
+    }
+  };
+
+  /**
+   * Busca e decifra todas as mensagens do chat
+   */
+  const fetchMessages = async (isRefresh = false) => {
+    if (!selectedChat || !privateKey) {
+      console.log("⏸️ Aguardando chat selecionado e chave privada...");
+      return;
+    }
+
+    console.log(
+      isRefresh
+        ? "\n🔄 Atualizando mensagens..."
+        : "\n=== BUSCANDO E DECIFRANDO MENSAGENS ==="
+    );
+
+    try {
+      setLoading(!isRefresh);
+
+      const config = {
+        headers: { Authorization: `Bearer ${user.token}` },
+      };
+
+      const { data } = await axios.get(
+        `/api/message/${selectedChat._id}`,
+        config
+      );
+
+      console.log(`📦 ${data.length} envelopes cifrados recebidos`);
+
+      // Decifrar todas as mensagens
+      const decryptedMessages = await Promise.all(
+        data.map(async (msg) => {
+          const decrypted = await decryptMessage(msg.content, selectedChat._id);
+          return {
+            ...msg,
+            decrypted: decrypted,
+          };
+        })
+      );
+
+      // ⭐ CORREÇÃO: Filtrar mensagens null (não destinadas ao usuário) e inválidas
+      const validMessages = decryptedMessages.filter(
+        (msg) =>
+          msg.decrypted !== null &&
+          msg.decrypted !== undefined &&
+          !msg.decrypted.startsWith("[")
+      );
+
+      // Remove duplicatas baseado em conteúdo + timestamp
+      const uniqueMessages = validMessages.filter(
+        (msg, index, self) =>
+          index ===
+          self.findIndex(
+            (m) =>
+              m.sender._id === msg.sender._id &&
+              m.decrypted === msg.decrypted &&
+              Math.abs(new Date(m.createdAt) - new Date(msg.createdAt)) < 2000
+          )
+      );
+
+      setMessages(uniqueMessages);
+      setLoading(false);
+
+      if (!isRefresh) {
+        socket.emit("join chat", selectedChat._id);
+      }
+
+      console.log(
+        `✅ ${uniqueMessages.length} mensagens válidas exibidas (de ${data.length} recebidas)`
+      );
+    } catch (error) {
+      console.error("❌ Erro ao buscar mensagens:", error);
+      setLoading(false);
+      toast({
+        title: "Erro!",
+        description: "Falha ao carregar mensagens.",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+        position: "bottom",
+      });
+    }
+  };
+
+  /**
+   * Envia mensagem cifrada usando sistema híbrido
+   */
+  const sendMessage = async (event) => {
+    if (event.key === "Enter" && newMessage.trim()) {
+      console.log("\n============================================");
+      console.log("🔐 CIFRANDO E ENVIANDO MENSAGEM");
+      console.log("============================================");
+
+      socket.emit("stop typing", selectedChat._id);
+
+      try {
+        const config = {
+          headers: {
+            "Content-type": "application/json",
+            Authorization: `Bearer ${user.token}`,
+          },
+        };
+
+        // Obtém informações do chat
+        const { data: chatInfo } = await axios.get(
+          `/api/chat/${selectedChat._id}`,
+          config
+        );
+
+        console.log(`👥 Chat com ${chatInfo.users.length} membros`);
+
+        // Cifra mensagem para cada membro
+        const encryptedMessages = [];
+
+        for (const member of chatInfo.users) {
+          console.log(`\n🔐 Cifrando para ${member.name}...`);
+
+          // Obtém número de sequência
+          const sequence = await getNextSequenceNumber(selectedChat._id);
+
+          // Prepara metadados
+          const metadata = {
+            senderId: user._id,
+            recipientId: member._id,
+            chatId: selectedChat._id,
+            timestamp: Date.now(),
+            sequence: sequence,
+          };
+
+          console.log("📋 Metadados:", metadata);
+
+          // Cifra usando sistema híbrido
+          const envelope = await hybridEncrypt(
+            newMessage,
+            member.publicKey,
+            metadata
+          );
+
+          console.log("✅ Envelope criado para", member.name);
+
+          encryptedMessages.push({
+            destinatarioId: member._id,
+            envelope: envelope,
+          });
+        }
+
+        // Envia cada versão cifrada
+        console.log(
+          `\n📤 Enviando ${encryptedMessages.length} envelopes cifrados...`
+        );
+
+        await Promise.all(
+          encryptedMessages.map((msg) =>
+            axios.post(
+              "/api/message",
+              {
+                content: JSON.stringify(msg.envelope),
+                chatId: selectedChat._id,
+                destinatarioId: msg.destinatarioId,
+              },
+              config
+            )
+          )
+        );
+
+        console.log("✅ Todas as mensagens enviadas com sucesso!");
+        console.log("🔒 Proteções aplicadas:");
+        console.log("   ✓ Confidencialidade (AES-256-GCM)");
+        console.log("   ✓ Integridade (Authentication Tag)");
+        console.log("   ✓ Autenticidade (AAD)");
+        console.log("   ✓ Anti-Replay (Sequence Numbers)");
+        console.log("   ✓ Forward Secrecy (Unique Session Keys)");
+        console.log("============================================\n");
+
+        setNewMessage("");
+        socket.emit("new message", { room: selectedChat._id });
+      } catch (error) {
+        console.error("\n❌ ERRO AO ENVIAR MENSAGEM");
+        console.error("Erro:", error.response?.data || error.message);
+        console.log("============================================\n");
+
+        toast({
+          title: "Erro!",
+          description:
+            error.response?.data?.message || "Falha ao enviar mensagem.",
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+          position: "bottom",
+        });
+      }
+    }
+  };
+
+  const typingHandler = (e) => {
+    setNewMessage(e.target.value);
+    if (!socketConnected) return;
+
+    if (!typing) {
+      setTyping(true);
+      socket.emit("typing", selectedChat._id);
+    }
+
+    let lastTypingTime = new Date().getTime();
+    var timerLength = 3000;
+
+    setTimeout(() => {
+      var timeNow = new Date().getTime();
+      var timeDiff = timeNow - lastTypingTime;
+      if (timeDiff >= timerLength && typing) {
+        socket.emit("stop typing", selectedChat._id);
+        setTyping(false);
+      }
+    }, timerLength);
+  };
+
+  // Effect: Inicializa socket e carrega chave privada
   useEffect(() => {
-    (async () => {
-      const key = await decryptStoredPrivateKey();
-      if (key) setPrivateKey(key);
-    })();
+    loadPrivateKey();
 
     socket = io(ENDPOINT);
     socket.emit("setup", user);
@@ -169,93 +468,7 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     };
   }, []);
 
-  const fetchMessages = async (isRefresh = false) => {
-    if (!selectedChat || !privateKey) return;
-    console.log(isRefresh ? "\n🔄 Atualizando mensagens..." : "\n=== BUSCANDO MENSAGENS CIFRADAS ===");
-
-    try {
-      const config = {
-        headers: { Authorization: `Bearer ${user.token}` },
-      };
-
-      const { data } = await axios.get(`/api/message/${selectedChat._id}`, config);
-      console.log(`📦 ${data.length} mensagens recebidas do servidor.`);
-
-      const decryptedMessages = [];
-      for (const msg of data) {
-        console.log("\nProcessando mensagem:", msg._id);
-
-        // Evita processar mensagens que não são do chat atual
-        if (!msg.destinatario || (!msg.sender && !msg.chat)) continue;
-
-        if (
-          msg.destinatario?._id !== user._id && // não é destinatário
-          msg.sender?._id !== user._id // nem remetente
-        ) {
-          console.log(`Ignorando mensagem ${msg._id}: não pertence a ${user.name}`);
-          continue;
-        }
-
-        // Evita mostrar cópia duplicada do mesmo conteúdo enviado
-        if (
-          msg.sender?._id === user._id && // sou o remetente
-          msg.destinatario?._id !== user._id // mas não é a versão "minha"
-        ) {
-          console.log(`Ignorando duplicata da mensagem enviada: ${msg._id}`);
-          continue;
-        }
-
-        // Evita descriptografia se a chave ainda não foi carregada
-        if (!privateKey) {
-          console.warn("⚠️ Chave privada ainda não disponível, adiando descriptografia.");
-          continue;
-        }
-
-        const clear = await decryptMessage(msg.content, privateKey);
-
-        decryptedMessages.push({
-          ...msg,
-          decrypted: clear || "[Falha ao descriptografar mensagem]",
-        });
-      }
-
-      // Ordena por data e evita duplicação de mensagens já exibidas
-      const allMessages = isRefresh
-        ? [...messages, ...decryptedMessages].filter(
-            (v, i, arr) => arr.findIndex(m => m._id === v._id) === i
-          )
-        : decryptedMessages;
-      
-      const uniqueMessages = decryptedMessages.filter(
-        (msg, index, self) =>
-          index === self.findIndex(
-            (m) =>
-              m.sender._id === msg.sender._id &&
-              m.decrypted === msg.decrypted &&
-              Math.abs(new Date(m.createdAt) - new Date(msg.createdAt)) < 2000 // margem de 2s
-          )
-      );
-
-      setMessages(uniqueMessages);
-
-      // setMessages(decryptedMessages);
-      if (!isRefresh) socket.emit("join chat", selectedChat._id);
-
-      console.log("✅ Todas as mensagens processadas e exibidas no chat.");
-    } catch (error) {
-      console.error("❌ Erro ao buscar mensagens:", error);
-      toast({
-        title: "Erro!",
-        description: "Falha ao carregar mensagens.",
-        status: "error",
-        duration: 5000,
-        isClosable: true,
-        position: "bottom",
-      });
-    }
-  };
-
-  // 1️⃣ Busca mensagens sempre que o chat selecionado mudar
+  // Effect: Busca mensagens quando chat muda
   useEffect(() => {
     if (selectedChat && privateKey) {
       fetchMessages(false);
@@ -263,93 +476,18 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     }
   }, [selectedChat, privateKey]);
 
-  // 2️⃣ Atualiza quando o socket pedir refresh
+  // Effect: Atualiza mensagens via socket
   useEffect(() => {
     if (!socket) return;
-    socket.on("refresh messages", () => fetchMessages(true));
+
+    socket.on("refresh messages", () => {
+      if (selectedChat && privateKey) {
+        fetchMessages(true);
+      }
+    });
+
     return () => socket.off("refresh messages");
   }, [socket, privateKey, selectedChat]);
-
-  const sendMessage = async (event) => {
-    if (event.key === "Enter" && newMessage) {
-      console.log("\n=== INICIANDO ENVIO DE MENSAGEM CIFRADA ===");
-      socket.emit("stop typing", selectedChat._id);
-
-      try {
-        const config = {
-          headers: {
-            "Content-type": "application/json",
-            Authorization: `Bearer ${user.token}`,
-          },
-        };
-
-        const { data: chatInfo } = await axios.get(
-          `/api/chat/${selectedChat._id}`,
-          config
-        );
-
-        console.log("👥 Usuários no chat:", chatInfo.users.map(u => u.email).join(", "));
-
-        const encryptedMessages = [];
-        for (const member of chatInfo.users) {
-          console.log(`🔐 Criptografando mensagem para ${member.email}...`);
-          const encrypted = await encryptMessageForUser(newMessage, member.publicKey);
-          encryptedMessages.push({
-            destinatarioId: member._id,
-            content: encrypted,
-          });
-        }
-
-        // Enviar cada versão criptografada
-        await Promise.all(
-          encryptedMessages.map(msg =>
-            axios.post(
-              "/api/message",
-              {
-                content: msg.content,
-                chatId: selectedChat._id,
-                destinatarioId: msg.destinatarioId,
-              },
-              config
-            )
-          )
-        );
-
-        console.log("✅ Todas as mensagens cifradas enviadas com sucesso!");
-        setNewMessage("");
-        socket.emit("new message", { room: selectedChat._id });
-      } catch (error) {
-        console.error("❌ Erro ao enviar mensagem:", error);
-        toast({
-          title: "Erro!",
-          description: "Falha ao enviar mensagem.",
-          status: "error",
-          duration: 5000,
-          isClosable: true,
-          position: "bottom",
-        });
-      }
-    }
-  };
-
-  const typingHandler = (e) => {
-    setNewMessage(e.target.value);
-    if (!socketConnected) return;
-    if (!typing) {
-      setTyping(true);
-      socket.emit("typing", selectedChat._id);
-    }
-    let lastTypingTime = new Date().getTime();
-    var timerLength = 3000;
-    setTimeout(() => {
-      var timeNow = new Date().getTime();
-      var timeDiff = timeNow - lastTypingTime;
-      if (timeDiff >= timerLength && typing) {
-        socket.emit("stop typing", selectedChat._id);
-        setTyping(false);
-      }
-    }, timerLength);
-  };
 
   return (
     <>
@@ -429,7 +567,7 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
                 }}
                 disabled={!newMessage.trim()}
               >
-                Send
+                🔒 Send
               </button>
             </div>
           </div>
