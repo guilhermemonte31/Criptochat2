@@ -2,7 +2,7 @@ import { FormControl } from "@chakra-ui/form-control";
 import { Input } from "@chakra-ui/input";
 import { Box, Text } from "@chakra-ui/layout";
 import "./styles.css";
-import { IconButton, Spinner, useToast } from "@chakra-ui/react";
+import { IconButton, Spinner, useToast, Button } from "@chakra-ui/react";
 import { getSender, getSenderFull } from "../config/ChatLogics";
 import { useEffect, useState } from "react";
 import { useHistory } from "react-router";
@@ -28,6 +28,53 @@ const arrayBufferFromBase64 = (b64) => {
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes.buffer;
 };
+
+function clearOldPrivateKeys(currentUserName) {
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key.endsWith("_privateKey") && key !== `${currentUserName}_privateKey`) {
+      localStorage.removeItem(key);
+      i--; // ajusta o índice porque removemos um item
+    }
+  }
+}
+
+  const arrayBufferToBase64 = (buffer) => {
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+
+    return btoa(binary);
+  };
+
+  
+  const deriveAesKey = async (password, salt) => {
+    const enc = new TextEncoder();
+    const keyMaterial = await window.crypto.subtle.importKey(
+      "raw",
+      enc.encode(password),
+      { name: "PBKDF2" },
+      false,
+      ["deriveKey"]
+    );
+
+    return await window.crypto.subtle.deriveKey(
+      {
+        name: "PBKDF2",
+        salt,
+        iterations: 100000,
+        hash: "SHA-256",
+      },
+      keyMaterial,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt", "decrypt"]
+    );
+  };
+
 
 const deriveAesKeyForDecryption = async (password, salt, iterations, hash) => {
   const enc = new TextEncoder();
@@ -78,6 +125,71 @@ const decryptStoredPrivateKey = async (password) => {
     console.error("❌ Erro ao importar chave privada:", err);
     return null;
   }
+};
+
+
+const encryptPrivateKey = async (privateKeyArrayBuffer, password) => {
+  const salt = window.crypto.getRandomValues(new Uint8Array(16));
+  const iv = window.crypto.getRandomValues(new Uint8Array(12));
+
+  const aesKey = await deriveAesKey(password, salt);
+  const encrypted = await window.crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    aesKey,
+    privateKeyArrayBuffer
+  );
+
+  return {
+    cipher: arrayBufferToBase64(encrypted),
+    iv: arrayBufferToBase64(iv.buffer),
+    salt: arrayBufferToBase64(salt.buffer),
+  };
+};
+
+
+// Funções para rotação de chaves
+const generateNewKeyPair = async () => {
+  console.log("🔄 Iniciando geração do novo par de chaves...");
+  
+  const keyPair = await window.crypto.subtle.generateKey(
+    {
+      name: "RSA-OAEP",
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256",
+    },
+    true,
+    ["encrypt", "decrypt"]
+  );
+
+  console.log("✅ Novo par de chaves gerado com sucesso!");
+  return keyPair;
+};
+
+const exportPublicKeyToPEM = async (publicKey) => {
+  const exported = await window.crypto.subtle.exportKey("spki", publicKey);
+  const exportedAsBase64 = btoa(String.fromCharCode(...new Uint8Array(exported)));
+  return `-----BEGIN PUBLIC KEY-----\n${exportedAsBase64}\n-----END PUBLIC KEY-----`;
+};
+
+const exportPrivateKeyToJWK = async (privateKey) => {
+  return await window.crypto.subtle.exportKey("jwk", privateKey);
+};
+
+const exportPrivateKeyToPkcs8 = async (privateKey) => {
+  const exported = await window.crypto.subtle.exportKey("pkcs8", privateKey);
+  const exportedAsBase64 = btoa(String.fromCharCode(...new Uint8Array(exported)));
+  return `-----BEGIN PRIVATE KEY-----\n${exportedAsBase64}\n-----END PRIVATE KEY-----`;
+}
+
+const recryptMessage = async (message, oldPrivateKey, newPublicKey) => {
+  // Descriptografa com a chave antiga
+  const decrypted = await decryptMessage(message, oldPrivateKey);
+  if (!decrypted) return null;
+
+  // Criptografa com a nova chave
+  const recrypted = await encryptMessageForUser(decrypted, newPublicKey);
+  return recrypted;
 };
 
 const encryptMessageForUser = async (message, publicKeyPem) => {
@@ -136,6 +248,7 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   const [typing, setTyping] = useState(false);
   const [istyping, setIsTyping] = useState(false);
   const [privateKey, setPrivateKey] = useState(null);
+  const [isRotatingKeys, setIsRotatingKeys] = useState(false);
 
   const toast = useToast();
 
@@ -210,6 +323,8 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
           console.warn("⚠️ Chave privada ainda não disponível, adiando descriptografia.");
           continue;
         }
+
+        console.log("[DEBUG] teste chave privada: ", privateKey);
 
         const clear = await decryptMessage(msg.content, privateKey);
 
@@ -293,6 +408,7 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
         const encryptedMessages = [];
         for (const member of chatInfo.users) {
           console.log(`🔐 Criptografando mensagem para ${member.email}...`);
+          console.log("[DEBUG] Chave pública do destinatário: ", member.publicKey);
           const encrypted = await encryptMessageForUser(newMessage, member.publicKey);
           encryptedMessages.push({
             destinatarioId: member._id,
@@ -351,6 +467,127 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     }, timerLength);
   };
 
+  const rotateKeys = async () => {
+
+    if (!privateKey) {
+      toast({
+        title: "Erro!",
+        description: "Chave privada atual não encontrada.",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+        position: "bottom",
+      });
+      return;
+    }
+
+    try {
+      setIsRotatingKeys(true);
+      console.log("INICIANDO PROCESSO DE ROTAÇÃO DE CHAVES");
+      console.log("Chave privada atual:", await window.crypto.subtle.exportKey("jwk", privateKey));
+
+      // Gera novo par de chaves
+      const newKeyPair = await generateNewKeyPair();
+      const newPublicKeyPEM = await exportPublicKeyToPEM(newKeyPair.publicKey);
+      const newPrivateKeyJWK = await exportPrivateKeyToJWK(newKeyPair.privateKey);
+      const newPrivateKeyPEM = await exportPrivateKeyToPkcs8(newKeyPair.privateKey);
+      const newPrivateKeyBytes = await window.crypto.subtle.exportKey("pkcs8", newKeyPair.privateKey);
+      const encryptedNewPrivate = await encryptPrivateKey(newPrivateKeyBytes, user.password);
+
+
+      console.log("🔑 Nova chave pública gerada:", newPublicKeyPEM);
+      console.log("🔑 Nova chave privada gerada:", newPrivateKeyPEM);
+
+      
+      const teste = localStorage.getItem("userInfo");
+      sessionStorage.setItem("privateKeyJwk", JSON.stringify(newPrivateKeyJWK));
+      console.log("Nova chave privada JWK armazenada na sessão. ", newPrivateKeyJWK);
+
+      // Atualiza chave no backend
+      const config = {
+        headers: {
+          "Content-type": "application/json",
+          Authorization: `Bearer ${user.token}`,
+        },
+      };
+
+      console.log("[DEBUG] Enviando nova chave pública para o servidor...");
+      await axios.post("/api/user/rotate-keys", {
+        newPublicKey: newPublicKeyPEM
+      }, config);
+
+
+
+      // Re-criptografa mensagens existentes
+      console.log("Iniciando re-criptografia das mensagens...");
+
+
+      const newEncryptedMessages = [];
+
+
+
+
+
+
+      const messagesToUpdate = messages.filter(m => m.destinatario._id === user._id);
+
+      console.log("[DEBUG] Mensagens para re-criptografar:", messagesToUpdate.map(m => m.content));
+      
+      for (const msg of messagesToUpdate) {
+        const recryptedContent = await recryptMessage(
+          msg.content,
+          privateKey,
+          newPublicKeyPEM
+        );
+        console.log(`[DEBUG] Mensagem ${msg._id} re-criptografada:`, recryptedContent);
+
+        if (recryptedContent) {
+          await axios.put(`/api/message/edit/${msg._id}`, {
+            content: recryptedContent
+          }, config);
+          console.log(`✅ Mensagem ${msg._id} re-criptografada com sucesso`);
+        }
+      }
+
+     
+
+      console.log("Rotação de chaves concluída com sucesso!");
+      toast({
+        title: "Sucesso!",
+        description: "Chaves rotacionadas com sucesso.",
+        status: "success",
+        duration: 5000,
+        isClosable: true,
+        position: "bottom",
+      });
+
+      const testename = JSON.parse(teste).name;
+      // Atualiza chaves no storage
+      clearOldPrivateKeys(testename);
+
+      localStorage.setItem(`${testename}_privateKey`, JSON.stringify(encryptedNewPrivate));
+
+      //localStorage.setItem("userInfo", JSON.stringify(data));
+      setPrivateKey(newKeyPair.privateKey);
+
+      // Recarrega mensagens com nova chave
+      await fetchMessages(true);
+
+    } catch (error) {
+      console.error("Erro na rotação de chaves:", error);
+      toast({
+        title: "Erro!",
+        description: "Falha ao rotacionar chaves.",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+        position: "bottom",
+      });
+    } finally {
+      setIsRotatingKeys(false);
+    }
+  };
+
   return (
     <>
       {selectedChat ? (
@@ -371,23 +608,35 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
               </h2>
             </div>
             <div className="chat-header-actions">
-              {!selectedChat.isGroupChat ? (
-                <ProfileModal user={getSenderFull(user, selectedChat.users)}>
-                  <button className="header-icon-btn">
-                    <i className="fas fa-info-circle"></i>
-                  </button>
-                </ProfileModal>
-              ) : (
-                <UpdateGroupChatModal
-                  fetchMessages={fetchMessages}
-                  fetchAgain={fetchAgain}
-                  setFetchAgain={setFetchAgain}
+              <div style={{ display: 'flex', gap: '10px' }}>
+                {!selectedChat.isGroupChat ? (
+                  <ProfileModal user={getSenderFull(user, selectedChat.users)}>
+                    <button className="header-icon-btn">
+                      <i className="fas fa-info-circle"></i>
+                    </button>
+                  </ProfileModal>
+                ) : (
+                  <UpdateGroupChatModal
+                    fetchMessages={fetchMessages}
+                    fetchAgain={fetchAgain}
+                    setFetchAgain={setFetchAgain}
+                  >
+                    <button className="header-icon-btn">
+                      <i className="fas fa-cog"></i>
+                    </button>
+                  </UpdateGroupChatModal>
+                )}
+                <Button
+                  onClick={rotateKeys}
+                  isLoading={isRotatingKeys}
+                  loadingText="Rotacionando..."
+                  size="sm"
+                  colorScheme="blue"
+                  leftIcon={<i className="fas fa-key"></i>}
                 >
-                  <button className="header-icon-btn">
-                    <i className="fas fa-cog"></i>
-                  </button>
-                </UpdateGroupChatModal>
-              )}
+                  Rotacionar Chaves
+                </Button>
+              </div>
             </div>
           </div>
 
