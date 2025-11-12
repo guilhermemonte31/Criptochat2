@@ -18,10 +18,14 @@ import UpdateGroupChatModal from "./miscellaneous/UpdateGroupChatModal";
 import { ChatState } from "../Context/ChatProvider";
 import "./SingleChat.css";
 
-const ENDPOINT = "http://localhost:5000";
-var socket, selectedChatCompare;
+const ENDPOINT =
+  window.location.hostname === "localhost"
+    ? "http://localhost:5001"
+    : window.location.origin;
 
-// FUNÇÕES DE SUPORTE PARA DECIFRAR A CHAVE PRIVADA SALVA
+let socket;
+let selectedChatCompare;
+
 const arrayBufferFromBase64 = (b64) => {
   const binary = atob(b64);
   const bytes = new Uint8Array(binary.length);
@@ -29,32 +33,7 @@ const arrayBufferFromBase64 = (b64) => {
   return bytes.buffer;
 };
 
-const deriveAesKeyForDecryption = async (password, salt, iterations, hash) => {
-  const enc = new TextEncoder();
-  const baseKey = await window.crypto.subtle.importKey(
-    "raw",
-    enc.encode(password),
-    "PBKDF2",
-    false,
-    ["deriveKey"]
-  );
-
-  return await window.crypto.subtle.deriveKey(
-    {
-      name: "PBKDF2",
-      salt,
-      iterations,
-      hash,
-    },
-    baseKey,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["decrypt"]
-  );
-};
-
-// Recuperando e decifrando a chave privada do sessionStorage
-const decryptStoredPrivateKey = async (password) => {
+const decryptStoredPrivateKey = async () => {
   try {
     const privateKeyJwkStr = sessionStorage.getItem("privateKeyJwk");
     if (!privateKeyJwkStr) {
@@ -126,8 +105,6 @@ const decryptMessage = async (encryptedB64, privateKey) => {
   }
 };
 
-
-
 const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -136,38 +113,75 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   const [typing, setTyping] = useState(false);
   const [istyping, setIsTyping] = useState(false);
   const [privateKey, setPrivateKey] = useState(null);
+  const [socketInstance, setSocketInstance] = useState(null);
 
   const toast = useToast();
-
-  const defaultOptions = {
-    loop: true,
-    autoplay: true,
-    animationData: animationData,
-    rendererSettings: {
-      preserveAspectRatio: "xMidYMid slice",
-    },
-  };
-
   const { selectedChat, setSelectedChat, user, notification, setNotification } = ChatState();
 
   useEffect(() => {
-    (async () => {
+    if (!socketInstance) {
+      console.log("🔌 Inicializando conexão socket...");
+      const socketConn = io(ENDPOINT, {
+        transports: ["websocket"],
+        withCredentials: true,
+      });
+
+      socketConn.on("connect", () => {
+        console.log("🟢 Conectado ao servidor Socket.IO");
+        setSocketConnected(true);
+        socketConn.emit("setup", user);
+      });
+
+      socketConn.on("disconnect", () => {
+        console.warn("🔴 Desconectado do Socket.IO");
+        setSocketConnected(false);
+      });
+
+      socketConn.on("typing", () => setIsTyping(true));
+      socketConn.on("stop typing", () => setIsTyping(false));
+
+      setSocketInstance(socketConn);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    let mounted = true;
+    const init = async () => {
       const key = await decryptStoredPrivateKey();
-      if (key) setPrivateKey(key);
-    })();
+      if (mounted && key) setPrivateKey(key);
 
-    socket = io(ENDPOINT);
-    socket.emit("setup", user);
-    socket.on("connected", () => setSocketConnected(true));
-    socket.on("typing", () => setIsTyping(true));
-    socket.on("stop typing", () => setIsTyping(false));
+      if (!socket) {
+        console.log("🔌 Inicializando Socket.IO ->", ENDPOINT);
+        socket = io(ENDPOINT, {
+          transports: ["polling", "websocket"],
+          withCredentials: true,
+        });
 
-    return () => {
-      socket.off("connected");
-      socket.off("typing");
-      socket.off("stop typing");
+        socket.on("connect", () => {
+          console.log("🟢 Conectado ao servidor Socket.IO");
+          setSocketConnected(true);
+        });
+
+        socket.on("disconnect", () => {
+          console.warn("🔴 Desconectado do Socket.IO");
+          setSocketConnected(false);
+        });
+
+        socket.on("connected", () => setSocketConnected(true));
+        socket.on("typing", () => setIsTyping(true));
+        socket.on("stop typing", () => setIsTyping(false));
+      }
+
+      if (socket && user) {
+        socket.emit("setup", user);
+      }
     };
-  }, []);
+
+    init();
+    return () => {
+      mounted = false;
+    };
+  }, [user]);
 
   const fetchMessages = async (isRefresh = false) => {
     if (!selectedChat || !privateKey) return;
@@ -183,63 +197,34 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
 
       const decryptedMessages = [];
       for (const msg of data) {
-        console.log("\nProcessando mensagem:", msg._id);
-
-        // Evita processar mensagens que não são do chat atual
         if (!msg.destinatario || (!msg.sender && !msg.chat)) continue;
-
         if (
-          msg.destinatario?._id !== user._id && // não é destinatário
-          msg.sender?._id !== user._id // nem remetente
-        ) {
-          console.log(`Ignorando mensagem ${msg._id}: não pertence a ${user.name}`);
+          msg.destinatario?._id !== user._id &&
+          msg.sender?._id !== user._id
+        )
           continue;
-        }
-
-        // Evita mostrar cópia duplicada do mesmo conteúdo enviado
-        if (
-          msg.sender?._id === user._id && // sou o remetente
-          msg.destinatario?._id !== user._id // mas não é a versão "minha"
-        ) {
-          console.log(`Ignorando duplicata da mensagem enviada: ${msg._id}`);
-          continue;
-        }
-
-        // Evita descriptografia se a chave ainda não foi carregada
-        if (!privateKey) {
-          console.warn("⚠️ Chave privada ainda não disponível, adiando descriptografia.");
-          continue;
-        }
 
         const clear = await decryptMessage(msg.content, privateKey);
-
         decryptedMessages.push({
           ...msg,
           decrypted: clear || "[Falha ao descriptografar mensagem]",
         });
       }
 
-      // Ordena por data e evita duplicação de mensagens já exibidas
-      const allMessages = isRefresh
-        ? [...messages, ...decryptedMessages].filter(
-            (v, i, arr) => arr.findIndex(m => m._id === v._id) === i
-          )
-        : decryptedMessages;
-      
-      const uniqueMessages = decryptedMessages.filter(
-        (msg, index, self) =>
-          index === self.findIndex(
-            (m) =>
-              m.sender._id === msg.sender._id &&
-              m.decrypted === msg.decrypted &&
-              Math.abs(new Date(m.createdAt) - new Date(msg.createdAt)) < 2000 // margem de 2s
-          )
+      setMessages(
+        decryptedMessages.filter(
+          (m) =>
+            !(
+              m.sender._id === user._id &&
+              (m.decrypted?.includes("Falha ao descriptografar") ||
+                m.content?.includes("Falha ao descriptografar"))
+            )
+        )
       );
 
-      setMessages(uniqueMessages);
-
-      // setMessages(decryptedMessages);
-      if (!isRefresh) socket.emit("join chat", selectedChat._id);
+      if (!isRefresh && socket && socketConnected) {
+        socket.emit("join chat", selectedChat._id);
+      }
 
       console.log("✅ Todas as mensagens processadas e exibidas no chat.");
     } catch (error) {
@@ -255,7 +240,6 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     }
   };
 
-  // 1️⃣ Busca mensagens sempre que o chat selecionado mudar
   useEffect(() => {
     if (selectedChat && privateKey) {
       fetchMessages(false);
@@ -263,17 +247,47 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     }
   }, [selectedChat, privateKey]);
 
-  // 2️⃣ Atualiza quando o socket pedir refresh
   useEffect(() => {
-    if (!socket) return;
-    socket.on("refresh messages", () => fetchMessages(true));
-    return () => socket.off("refresh messages");
-  }, [socket, privateKey, selectedChat]);
+    if (!socketInstance) return;
+    const handleIncoming = async (newMsg) => {
+      console.log("💬 Nova mensagem recebida via socket:", newMsg);
+
+      if (!selectedChatCompare || selectedChatCompare._id !== newMsg.chat._id) {
+        if (!notification.find((n) => n._id === newMsg._id)) {
+          setNotification([newMsg, ...notification]);
+          setFetchAgain(!fetchAgain);
+        }
+        return;
+      }
+
+      const clear = await decryptMessage(newMsg.content, privateKey);
+      const finalMsg = { ...newMsg, decrypted: clear || "[Falha ao descriptografar]" };
+
+      setMessages((prev) => {
+        if (prev.some((m) => m._id === finalMsg._id)) return prev;
+        return [...prev, finalMsg];
+      });
+    };
+
+    socketInstance.on("message received", handleIncoming);
+    socketInstance.on("refresh messages", () => fetchMessages(true));
+
+    return () => {
+      socketInstance.off("message received", handleIncoming);
+      socketInstance.off("refresh messages");
+    };
+  }, [socketInstance, selectedChat, privateKey]);
 
   const sendMessage = async (event) => {
-    if (event.key === "Enter" && newMessage) {
+    const isEnter = event?.key === "Enter";
+    if (!isEnter && event?.type === "click" && !newMessage) return;
+
+    if ((isEnter || event?.type === "click") && newMessage) {
       console.log("\n=== INICIANDO ENVIO DE MENSAGEM CIFRADA ===");
-      socket.emit("stop typing", selectedChat._id);
+
+      if (socket && socketConnected) {
+        socket.emit("stop typing", selectedChat._id);
+      }
 
       try {
         const config = {
@@ -288,11 +302,12 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
           config
         );
 
-        console.log("👥 Usuários no chat:", chatInfo.users.map(u => u.email).join(", "));
-
         const encryptedMessages = [];
+
         for (const member of chatInfo.users) {
-          console.log(`🔐 Criptografando mensagem para ${member.email}...`);
+          // ⛔ Evita enviar mensagem para si mesmo (remetente)
+          if (member._id === user._id) continue;
+
           const encrypted = await encryptMessageForUser(newMessage, member.publicKey);
           encryptedMessages.push({
             destinatarioId: member._id,
@@ -300,10 +315,9 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
           });
         }
 
-        // Enviar cada versão criptografada
-        await Promise.all(
-          encryptedMessages.map(msg =>
-            axios.post(
+        const createdMessages = await Promise.all(
+          encryptedMessages.map(async (msg) => {
+            const { data } = await axios.post(
               "/api/message",
               {
                 content: msg.content,
@@ -311,13 +325,20 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
                 destinatarioId: msg.destinatarioId,
               },
               config
-            )
-          )
+            );
+            return data;
+          })
         );
 
-        console.log("✅ Todas as mensagens cifradas enviadas com sucesso!");
         setNewMessage("");
-        socket.emit("new message", { room: selectedChat._id });
+        createdMessages.forEach((m) => socketInstance?.emit("new message", m));
+
+        setMessages((prev) => [
+          ...prev,
+          ...createdMessages
+            .filter((m) => !prev.some((p) => p._id === m._id))
+            .map((m) => ({ ...m, decrypted: newMessage })),
+        ]);
       } catch (error) {
         console.error("❌ Erro ao enviar mensagem:", error);
         toast({
@@ -343,8 +364,7 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     var timerLength = 3000;
     setTimeout(() => {
       var timeNow = new Date().getTime();
-      var timeDiff = timeNow - lastTypingTime;
-      if (timeDiff >= timerLength && typing) {
+      if (timeNow - lastTypingTime >= timerLength && typing) {
         socket.emit("stop typing", selectedChat._id);
         setTyping(false);
       }
@@ -355,13 +375,9 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     <>
       {selectedChat ? (
         <div className="singlechat-container">
-          {/* Header do chat */}
           <div className="chat-header">
             <div className="chat-header-left">
-              <button
-                className="back-button"
-                onClick={() => setSelectedChat("")}
-              >
+              <button className="back-button" onClick={() => setSelectedChat("")}>
                 <ArrowBackIcon />
               </button>
               <h2 className="chat-header-title">
@@ -391,7 +407,6 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
             </div>
           </div>
 
-          {/* Área de mensagens */}
           <div className="messages-container">
             {loading ? (
               <div className="messages-loading">
@@ -400,8 +415,6 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
             ) : (
               <ScrollableChat messages={messages} />
             )}
-
-            {/* Indicador de digitação */}
             {istyping && (
               <div className="typing-indicator">
                 <div className="typing-dot"></div>
@@ -411,7 +424,6 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
             )}
           </div>
 
-          {/* Input de mensagem */}
           <div className="message-input-container">
             <div className="message-input-wrapper">
               <input
@@ -423,10 +435,7 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
               />
               <button
                 className="send-button"
-                onClick={(e) => {
-                  e.key = "Enter";
-                  sendMessage(e);
-                }}
+                onClick={(e) => sendMessage({ ...e, key: "Enter", type: "click" })}
                 disabled={!newMessage.trim()}
               >
                 Send
@@ -437,9 +446,7 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
       ) : (
         <div className="empty-chat-state">
           <div className="empty-chat-icon">💬</div>
-          <div className="empty-chat-text">
-            Click on a user to start chatting
-          </div>
+          <div className="empty-chat-text">Click on a user to start chatting</div>
         </div>
       )}
     </>

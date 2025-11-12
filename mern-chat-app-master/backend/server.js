@@ -1,103 +1,109 @@
 const express = require("express");
+const http = require("http");
+const https = require("https");
+const fs = require("fs");
+const path = require("path");
+const dotenv = require("dotenv");
+const colors = require("colors");
 const connectDB = require("./config/db");
+const { Server } = require("socket.io");
+
+// Rotas
 const userRoutes = require("./routes/userRoutes");
 const chatRoutes = require("./routes/chatRoutes");
 const messageRoutes = require("./routes/messageRoutes");
-const { notFound, errorHandler } = require("./middleware/errorMiddleware");
-const path = require("path");
-const text = "production";
 
+dotenv.config();
 connectDB();
+
 const app = express();
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
-// Configurações para UTF-8
-app.use(express.json({ charset: 'utf8' }));
-app.use(express.urlencoded({ extended: true, charset: 'utf8' }));
-
-// Definir charset nas respostas
-app.use((req, res, next) => {
-  res.charset = 'utf-8';
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  next();
-});
-
-app.use(express.json()); // to accept json data
-
-// app.get("/", (req, res) => {
-//   res.send("API Running!");
-// });
-
+// -------------------- Rotas principais --------------------
 app.use("/api/user", userRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/message", messageRoutes);
 
-// --------------------------deployment------------------------------
+// -------------------- Caminhos e build --------------------
+const __dirname1 = path.resolve(__dirname, "..");
+const buildPath = path.join(__dirname1, "frontend", "build");
 
-const __dirname1 = path.resolve();
-
-if (text === "production") {
-  app.use(express.static(path.join(__dirname1, "/frontend/build")));
-
+if (fs.existsSync(buildPath)) {
+  app.use(express.static(buildPath));
   app.get("*", (req, res) =>
-    res.sendFile(path.resolve(__dirname1, "frontend", "build", "index.html"))
+    res.sendFile(path.join(buildPath, "index.html"))
   );
 } else {
-  app.get("/", (req, res) => {
-    res.send("API is running..");
-  });
+  app.get("/", (req, res) => res.send("⚠️ Build do frontend não encontrado."));
 }
 
-// --------------------------deployment------------------------------
+// -------------------- Certificados HTTPS --------------------
+const certPath = path.join(__dirname, "certs");
+const keyFile = path.join(certPath, "key.pem");
+const certFile = path.join(certPath, "cert.pem");
 
-// Error Handling middlewares
-app.use(notFound);
-app.use(errorHandler);
+// Gera certificados automaticamente se não existirem
+if (!fs.existsSync(keyFile) || !fs.existsSync(certFile)) {
+  console.log("⚙️  Gerando certificados autoassinados...");
+  require("child_process").execSync("node backend/certs/generateCert.js", { stdio: "inherit" });
+}
 
-const PORT = 5000;
+const options = {
+  key: fs.readFileSync(keyFile),
+  cert: fs.readFileSync(certFile),
+};
 
-const server = app.listen(
-  PORT,
-  console.log(`Server running on PORT ${PORT}...`.yellow.bold)
-);
+// -------------------- Servidores --------------------
+const HTTPS_PORT = process.env.PORT || 5000;
+const HTTP_PORT = 5001; // Porta auxiliar p/ LocalTunnel
 
-const io = require("socket.io")(server, {
+// 🔒 Servidor HTTPS principal
+const httpsServer = https.createServer(options, app).listen(HTTPS_PORT, () => {
+  console.log(`🚀 Servidor HTTPS rodando em https://localhost:${HTTPS_PORT}`.green.bold);
+});
+
+// 🌍 Servidor HTTP auxiliar (LocalTunnel)
+const httpServer = http.createServer(app).listen(HTTP_PORT, () => {
+  console.log(`🌍 Servidor HTTP rodando em http://localhost:${HTTP_PORT}`.yellow.bold);
+  console.log(`(Use esta porta no LocalTunnel)\n`);
+});
+
+// -------------------- Socket.IO --------------------
+const io = new Server(httpsServer, {
   pingTimeout: 60000,
   cors: {
-    origin: "http://localhost:3000",
-    // credentials: true,
+    origin: "*",
+    credentials: true,
   },
 });
 
+app.set("io", io);
+
 io.on("connection", (socket) => {
-  console.log("Connected to socket.io");
-  
+  console.log("🟢 Novo cliente conectado via Socket.IO");
+
+  // Evento de configuração inicial
   socket.on("setup", (userData) => {
     socket.join(userData._id);
     socket.emit("connected");
-    console.log("Usuario conectado:", userData._id);
   });
 
+  // Entrar em uma sala específica (chat)
   socket.on("join chat", (room) => {
     socket.join(room);
-    console.log("Usuario entrou na sala:", room);
+    console.log(`👥 Usuário entrou na sala ${room}`);
   });
-  
+
+  // Digitando...
   socket.on("typing", (room) => socket.in(room).emit("typing"));
   socket.on("stop typing", (room) => socket.in(room).emit("stop typing"));
 
+  // Nova mensagem enviada → atualizar os usuários do chat
   socket.on("new message", (data) => {
-    const room = data.room || data;
-    console.log("Nova mensagem recebida para sala:", room);
-    
-    // Emitir para todos na sala
-    io.in(room).emit("refresh messages");
-    console.log("Evento refresh messages emitido para sala:", room);
+    console.log(`📨 Nova mensagem recebida no servidor (sala ${data.room})`);
+    io.to(data.room).emit("message received", data);
   });
 
-  socket.off("setup", (userData) => {
-    console.log("USER DISCONNECTED");
-    if (userData && userData._id) {
-      socket.leave(userData._id);
-    }
-  });
+  socket.on("disconnect", () => console.log("🔴 Cliente desconectado"));
 });

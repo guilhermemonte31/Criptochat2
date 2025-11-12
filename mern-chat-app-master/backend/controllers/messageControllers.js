@@ -109,6 +109,15 @@ const sendMessage = asyncHandler(async (req, res) => {
     // Atualizar última mensagem do chat
     await Chat.findByIdAndUpdate(chat._id, { latestMessage: populatedMessage });
 
+    // 🔔 Notificar em tempo real via Socket.IO
+    const io = req.app.get("io");
+    if (io) {
+      console.log(`📡 Emitindo evento "message received" para sala ${chat._id}`);
+      io.to(chat._id.toString()).emit("message received", populatedMessage);
+    } else {
+      console.warn("⚠️ Socket.IO não disponível no contexto do app.");
+    }
+
     console.log("Mensagem cifrada armazenada com sucesso!");
     console.log("ID:", newMessage._id);
     console.log("Remetente:", req.user.name);
