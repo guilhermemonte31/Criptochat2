@@ -16,34 +16,43 @@ const ScrollableChat = ({ messages }) => {
     <ScrollableFeed>
       {messages &&
         messages.map((m, i) => (
-          <div style={{ display: "flex" }} key={m._id}>
-            {(isSameSender(messages, m, i, user._id) ||
-              isLastMessage(messages, i, user._id)) && (
-              <Tooltip label={m.sender.name} placement="bottom-start" hasArrow>
-                <Avatar
-                  mt="7px"
-                  mr={1}
-                  size="sm"
-                  cursor="pointer"
-                  name={m.sender.name}
-                  src={m.sender.pic}
-                />
-              </Tooltip>
-            )}
-            <span
-              style={{
-                backgroundColor: `${
-                  m.sender._id === user._id ? "#BEE3F8" : "#B9F5D0"
-                }`,
-                marginLeft: isSameSenderMargin(messages, m, i, user._id),
-                marginTop: isSameUser(messages, m, i, user._id) ? 3 : 10,
-                borderRadius: "20px",
-                padding: "5px 15px",
-                maxWidth: "75%",
-              }}
-            >
-              {m.content}
-            </span>
+          <div
+            key={m._id}
+            className={`message-wrapper ${
+              m.sender._id === user._id ? "sent" : "received"
+            }`}
+          >
+            {/* Avatar para mensagens recebidas */}
+            {m.sender._id !== user._id &&
+              (isSameSender(messages, m, i, user._id) ||
+                isLastMessage(messages, i, user._id)) && (
+                <Tooltip
+                  label={m.sender.name}
+                  placement="bottom-start"
+                  hasArrow
+                >
+                  <Avatar
+                    className="message-avatar"
+                    name={m.sender.name}
+                    src={m.sender.pic}
+                    size="sm"
+                  />
+                </Tooltip>
+              )}
+
+            {/* Espaçamento quando não tem avatar */}
+            {m.sender._id !== user._id &&
+              !isSameSender(messages, m, i, user._id) &&
+              !isLastMessage(messages, i, user._id) && (
+                <div style={{ width: "40px" }}></div>
+              )}
+
+            {/* Bolha da mensagem */}
+            <div className="message-bubble">
+              {m.decrypted && !m.decrypted.startsWith("-----BEGIN") 
+              ? m.decrypted 
+              : "[Mensagem criptografada]"}
+            </div>
           </div>
         ))}
     </ScrollableFeed>

@@ -1,23 +1,25 @@
 import { AddIcon } from "@chakra-ui/icons";
-import { Box, Stack, Text } from "@chakra-ui/layout";
 import { useToast } from "@chakra-ui/toast";
 import axios from "axios";
 import { useEffect, useState } from "react";
 import { getSender } from "../config/ChatLogics";
 import ChatLoading from "./ChatLoading";
 import GroupChatModal from "./miscellaneous/GroupChatModal";
-import { Button } from "@chakra-ui/react";
+import { Avatar } from "@chakra-ui/react";
 import { ChatState } from "../Context/ChatProvider";
+import "./MyChats.css";
 
 const MyChats = ({ fetchAgain }) => {
   const [loggedUser, setLoggedUser] = useState();
+  const [availableUsers, setAvailableUsers] = useState([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [activeTab, setActiveTab] = useState("chats"); // Adicionar estado para controlar a aba ativa
 
   const { selectedChat, setSelectedChat, user, chats, setChats } = ChatState();
 
   const toast = useToast();
 
   const fetchChats = async () => {
-    // console.log(user._id);
     try {
       const config = {
         headers: {
@@ -29,8 +31,65 @@ const MyChats = ({ fetchAgain }) => {
       setChats(data);
     } catch (error) {
       toast({
-        title: "Error Occured!",
+        title: "Error Occurred!",
         description: "Failed to Load the chats",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+        position: "bottom-left",
+      });
+    }
+  };
+
+  const fetchAvailableUsers = async () => {
+    try {
+      setLoadingUsers(true);
+      const config = {
+        headers: {
+          Authorization: `Bearer ${user.token}`,
+        },
+      };
+
+      const { data } = await axios.get("/api/user", config);
+      setAvailableUsers(data);
+      setLoadingUsers(false);
+    } catch (error) {
+      toast({
+        title: "Error Occurred!",
+        description: "Failed to Load available users",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+        position: "bottom-left",
+      });
+      setLoadingUsers(false);
+    }
+  };
+
+  const accessChat = async (userId) => {
+    try {
+      const config = {
+        headers: {
+          "Content-type": "application/json",
+          Authorization: `Bearer ${user.token}`,
+        },
+      };
+      const { data } = await axios.post(`/api/chat`, { userId }, config);
+
+      if (!chats.find((c) => c._id === data._id)) setChats([data, ...chats]);
+      setSelectedChat(data);
+
+      toast({
+        title: "Chat Started!",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+        position: "bottom",
+      });
+    } catch (error) {
+      toast({
+        title: "Error fetching the chat",
+        description: error.message,
         status: "error",
         duration: 5000,
         isClosable: true,
@@ -42,85 +101,116 @@ const MyChats = ({ fetchAgain }) => {
   useEffect(() => {
     setLoggedUser(JSON.parse(localStorage.getItem("userInfo")));
     fetchChats();
+    fetchAvailableUsers();
     // eslint-disable-next-line
   }, [fetchAgain]);
 
   return (
-    <Box
-      d={{ base: selectedChat ? "none" : "flex", md: "flex" }}
-      flexDir="column"
-      alignItems="center"
-      p={3}
-      bg="white"
-      w={{ base: "100%", md: "31%" }}
-      borderRadius="lg"
-      borderWidth="1px"
-    >
-      <Box
-        pb={3}
-        px={3}
-        fontSize={{ base: "28px", md: "30px" }}
-        fontFamily="Work sans"
-        d="flex"
-        w="100%"
-        justifyContent="space-between"
-        alignItems="center"
-      >
-        My Chats
+    <div className="mychats-container">
+      {/* Header */}
+      <div className="mychats-header">
+        <h2 className="mychats-title">My Chats</h2>
         <GroupChatModal>
-          <Button
-            d="flex"
-            fontSize={{ base: "17px", md: "10px", lg: "17px" }}
-            rightIcon={<AddIcon />}
-          >
-            New Group Chat
-          </Button>
+          <button className="new-group-btn">
+            <AddIcon />
+            <span>New Group</span>
+          </button>
         </GroupChatModal>
-      </Box>
-      <Box
-        d="flex"
-        flexDir="column"
-        p={3}
-        bg="#F8F8F8"
-        w="100%"
-        h="100%"
-        borderRadius="lg"
-        overflowY="hidden"
-      >
-        {chats ? (
-          <Stack overflowY="scroll">
-            {chats.map((chat) => (
-              <Box
-                onClick={() => setSelectedChat(chat)}
-                cursor="pointer"
-                bg={selectedChat === chat ? "#38B2AC" : "#E8E8E8"}
-                color={selectedChat === chat ? "white" : "black"}
-                px={3}
-                py={2}
-                borderRadius="lg"
-                key={chat._id}
-              >
-                <Text>
-                  {!chat.isGroupChat
-                    ? getSender(loggedUser, chat.users)
-                    : chat.chatName}
-                </Text>
-                {chat.latestMessage && (
-                  <Text fontSize="xs">
-                    <b>{chat.latestMessage.sender.name} : </b>
-                    {chat.latestMessage.content.length > 50
-                      ? chat.latestMessage.content.substring(0, 51) + "..."
-                      : chat.latestMessage.content}
-                  </Text>
-                )}
-              </Box>
-            ))}
-          </Stack>
+      </div>
+
+      {/* Tabs */}
+      <div className="chats-tabs">
+        <div className="tabs-list">
+          <button
+            className={`tab-btn ${activeTab === "chats" ? "active" : ""}`}
+            onClick={() => setActiveTab("chats")}
+          >
+            Chats ({chats ? chats.length : 0})
+          </button>
+          <button
+            className={`tab-btn ${activeTab === "users" ? "active" : ""}`}
+            onClick={() => setActiveTab("users")}
+          >
+            Users ({availableUsers.length})
+          </button>
+        </div>
+      </div>
+
+      {/* Lista de Chats/Usuários */}
+      <div className="chats-list-container">
+        {activeTab === "chats" ? (
+          // Aba de Chats
+          <>
+            {chats && chats.length > 0 ? (
+              chats.map((chat) => (
+                <div
+                  key={chat._id}
+                  className={`chat-item ${
+                    selectedChat === chat ? "active" : ""
+                  }`}
+                  onClick={() => setSelectedChat(chat)}
+                >
+                  <div className="chat-avatar">
+                    {!chat.isGroupChat
+                      ? getSender(loggedUser, chat.users)?.[0]?.toUpperCase()
+                      : chat.chatName[0]?.toUpperCase()}
+                  </div>
+                  <div className="chat-info">
+                    <div className="chat-name">
+                      {!chat.isGroupChat
+                        ? getSender(loggedUser, chat.users)
+                        : chat.chatName}
+                    </div>
+                    {chat.latestMessage && (
+                      <div className="chat-last-message">
+                        <b>{chat.latestMessage.sender.name}: </b>
+                        {chat.latestMessage.content.length > 40
+                          ? chat.latestMessage.content.substring(0, 41) + "..."
+                          : chat.latestMessage.content}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="empty-state">
+                No chats yet. Go to Users tab to start a conversation!
+              </div>
+            )}
+          </>
         ) : (
-          <ChatLoading />
+          // Aba de Usuários
+          <>
+            {loadingUsers ? (
+              <ChatLoading />
+            ) : availableUsers.length > 0 ? (
+              availableUsers.map((availableUser) => (
+                <div
+                  key={availableUser._id}
+                  className="chat-item"
+                  onClick={() => accessChat(availableUser._id)}
+                >
+                  <Avatar
+                    size="sm"
+                    name={availableUser.name}
+                    src={availableUser.pic}
+                    className="chat-avatar"
+                  />
+                  <div className="chat-info">
+                    <div className="chat-name">{availableUser.name}</div>
+                    <div className="chat-last-message">
+                      {availableUser.email}
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="empty-state">No users available</div>
+            )}
+          </>
         )}
-      </Box>
-    </Box>
+      </div>
+    </div>
   );
 };
 

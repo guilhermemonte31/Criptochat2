@@ -1,0 +1,374 @@
+/* Garantir que o modal apareça corretamente */
+.chakra-modal__content {
+    background: rgba(26, 29, 46, 0.98) !important;
+    color: #e2e8f0 !important;
+}
+
+.chakra-modal__header {
+    color: #ffffff !important;
+}
+
+.chakra-modal__body {
+    color: #e2e8f0 !important;
+}
+
+/* Botões do Chakra */
+.chakra-button {
+    font-family: 'Work Sans', sans-serif !important;
+}
+
+/* Avatar */
+.chakra-avatar {
+    border: 3px solid #00a88e !important;
+}
+
+/* FormControl */
+.chakra-form-control {
+    margin-bottom: 0 !important;
+}
+
+.chakra-form__label {
+    color: #a8b2d1 !important;
+    font-weight: 600 !important;
+    font-size: 0.85rem !important;
+}
+
+.chakra-input {
+    background: rgba(30, 35, 58, 0.8) !important;
+    border: 1px solid rgba(100, 116, 139, 0.3) !important;
+    color: #ffffff !important;
+}
+
+.chakra-input:focus {
+    border-color: #00a88e !important;
+    box-shadow: 0 0 0 1px #00a88e !important;
+}
+
+.chakra-input::placeholder {
+    color: #64748b !important;
+}
+
+/* Modal de Perfil - Z-index fixo */
+.chakra-modal__overlay {
+    z-index: 9999 !important;
+}
+
+.chakra-modal__content-container {
+    z-index: 10000 !important;
+}
+
+.profile-modal-overlay {
+    background: rgba(0, 0, 0, 0.7) !important;
+    backdrop-filter: blur(4px);
+    z-index: 9999 !important;
+}
+
+.profile-modal-content {
+    background: rgba(26, 29, 46, 0.98) !important;
+    border: 1px solid rgba(0, 168, 142, 0.3) !important;
+    border-radius: 16px !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
+    max-width: 500px !important;
+    z-index: 10000 !important;
+}
+
+/* Modal de Perfil */
+.profile-modal-overlay {
+    background: rgba(0, 0, 0, 0.7) !important;
+    backdrop-filter: blur(4px);
+}
+
+.profile-modal-content {
+    background: rgba(26, 29, 46, 0.98) !important;
+    border: 1px solid rgba(0, 168, 142, 0.3) !important;
+    border-radius: 16px !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
+    max-width: 500px !important;
+}
+
+.profile-modal-header {
+    border-bottom: 1px solid rgba(100, 116, 139, 0.2) !important;
+    padding: 20px 24px !important;
+    color: #ffffff !important;
+    font-size: 1.5rem !important;
+    font-weight: 700 !important;
+}
+
+.profile-modal-close {
+    color: #94a3b8 !important;
+    transition: all 0.2s ease !important;
+}
+
+.profile-modal-close:hover {
+    color: #00a88e !important;
+    background: rgba(0, 168, 142, 0.1) !important;
+}
+
+.profile-modal-body {
+    padding: 24px !important;
+    color: #e2e8f0 !important;
+}
+
+/* View Mode */
+.profile-view-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+}
+
+.profile-avatar-large {
+    width: 120px !important;
+    height: 120px !important;
+    border: 3px solid #00a88e !important;
+    box-shadow: 0 4px 12px rgba(0, 168, 142, 0.3) !important;
+}
+
+.profile-info {
+    text-align: center;
+}
+
+.profile-name {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #ffffff;
+    margin-bottom: 6px;
+}
+
+.profile-email {
+    font-size: 1rem;
+    color: #94a3b8;
+}
+
+.profile-action-btn {
+    width: 100%;
+    padding: 12px;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    transition: all 0.3s ease;
+    border: none;
+    cursor: pointer;
+}
+
+.btn-edit {
+    background: #00a88e;
+    color: white;
+}
+
+.btn-edit:hover {
+    background: #00c9a7;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 168, 142, 0.4);
+}
+
+.btn-delete {
+    background: transparent;
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.5);
+}
+
+.btn-delete:hover {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: #ef4444;
+}
+
+/* Edit Mode */
+.profile-edit-container {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.profile-avatar-medium {
+    width: 80px !important;
+    height: 80px !important;
+    margin: 0 auto !important;
+    border: 2px solid #00a88e !important;
+}
+
+.form-control-profile {
+    margin-bottom: 0 !important;
+}
+
+.form-label-profile {
+    font-size: 0.85rem !important;
+    font-weight: 600 !important;
+    color: #a8b2d1 !important;
+    margin-bottom: 6px !important;
+}
+
+.form-input-profile {
+    padding: 10px 14px !important;
+    background: rgba(30, 35, 58, 0.8) !important;
+    border: 1px solid rgba(100, 116, 139, 0.3) !important;
+    border-radius: 8px !important;
+    color: #ffffff !important;
+    font-size: 0.95rem !important;
+    transition: all 0.3s ease !important;
+}
+
+.form-input-profile::placeholder {
+    color: #64748b !important;
+}
+
+.form-input-profile:focus {
+    border-color: #00a88e !important;
+    background: rgba(30, 35, 58, 0.95) !important;
+    box-shadow: 0 0 0 3px rgba(0, 168, 142, 0.1) !important;
+}
+
+.input-group-profile {
+    position: relative;
+}
+
+.input-right-element-profile {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.show-password-profile {
+    padding: 6px 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #00a88e;
+    background: rgba(0, 168, 142, 0.1);
+    border: 1px solid rgba(0, 168, 142, 0.3);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.show-password-profile:hover {
+    background: rgba(0, 168, 142, 0.2);
+    border-color: #00a88e;
+}
+
+.file-input-profile {
+    padding: 10px 14px !important;
+    background: rgba(30, 35, 58, 0.8) !important;
+    border: 1px solid rgba(100, 116, 139, 0.3) !important;
+    border-radius: 8px !important;
+    color: #94a3b8 !important;
+    cursor: pointer !important;
+    transition: all 0.3s ease !important;
+}
+
+.file-input-profile:hover {
+    border-color: #00a88e !important;
+    background: rgba(0, 168, 142, 0.05) !important;
+}
+
+.btn-save {
+    background: #00a88e;
+    color: white;
+}
+
+.btn-save:hover:not(:disabled) {
+    background: #00c9a7;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 168, 142, 0.4);
+}
+
+.btn-cancel {
+    background: transparent;
+    color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.btn-cancel:hover {
+    background: rgba(148, 163, 184, 0.1);
+    border-color: #94a3b8;
+}
+
+.profile-action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none !important;
+}
+
+.profile-modal-footer {
+    border-top: 1px solid rgba(100, 116, 139, 0.2) !important;
+    padding: 16px 24px !important;
+}
+
+.btn-close-modal {
+    padding: 10px 20px;
+    background: rgba(148, 163, 184, 0.1);
+    color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn-close-modal:hover {
+    background: rgba(148, 163, 184, 0.2);
+    border-color: #94a3b8;
+}
+
+/* Alert Dialog para deletar */
+.alert-dialog-overlay {
+    background: rgba(0, 0, 0, 0.7) !important;
+    backdrop-filter: blur(4px);
+}
+
+.alert-dialog-content {
+    background: rgba(26, 29, 46, 0.98) !important;
+    border: 1px solid rgba(239, 68, 68, 0.3) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
+}
+
+.alert-dialog-header {
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    border-bottom: 1px solid rgba(100, 116, 139, 0.2) !important;
+    padding: 16px 20px !important;
+}
+
+.alert-dialog-body {
+    color: #e2e8f0 !important;
+    padding: 20px !important;
+}
+
+.alert-dialog-footer {
+    border-top: 1px solid rgba(100, 116, 139, 0.2) !important;
+    padding: 16px 20px !important;
+}
+
+.btn-alert-cancel {
+    padding: 10px 20px;
+    background: rgba(148, 163, 184, 0.1);
+    color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn-alert-cancel:hover {
+    background: rgba(148, 163, 184, 0.2);
+    border-color: #94a3b8;
+}
+
+.btn-alert-delete {
+    padding: 10px 20px;
+    background: #ef4444;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin-left: 12px;
+}
+
+.btn-alert-delete:hover {
+    background: #dc2626;
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+}

@@ -2,8 +2,8 @@ const asyncHandler = require("express-async-handler");
 const User = require("../models/userModel");
 const generateToken = require("../config/generateToken");
 const forge = require("node-forge");
-const cookie = require("cookie");
-
+const Chat = require("../models/chatModel");
+const { Message, encryptedMessage } = require("../models/messageModel");
 
 //@description     Get or Search all users
 //@route           GET /api/user?search=
@@ -33,7 +33,6 @@ const registerUser = asyncHandler(async (req, res) => {
     throw new Error("Please Enter all the Feilds");
   }
 
-
   const userExists = await User.findOne({ email });
 
   if (userExists) {
@@ -46,7 +45,7 @@ const registerUser = asyncHandler(async (req, res) => {
     email,
     password,
     pic,
-    publicKey
+    publicKey,
   });
 
   if (user) {
@@ -87,4 +86,93 @@ const authUser = asyncHandler(async (req, res) => {
   }
 });
 
-module.exports = { allUsers, registerUser, authUser };
+//@description     Get user profile
+//@route           GET /api/user/profile
+//@access          Protected
+const getUserProfile = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user._id);
+
+  if (user) {
+    res.json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      pic: user.pic,
+      isAdmin: user.isAdmin,
+    });
+  } else {
+    res.status(404);
+    throw new Error("User Not Found");
+  }
+});
+
+//@description     Update user profile
+//@route           PUT /api/user/profile
+//@access          Protected
+const updateUserProfile = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user._id);
+
+  if (user) {
+    user.name = req.body.name || user.name;
+    user.email = req.body.email || user.email;
+    user.pic = req.body.pic || user.pic;
+
+    // IMPORTANTE: Só atualizar a senha se ela foi realmente enviada
+    if (req.body.password && req.body.password.trim() !== "") {
+      user.password = req.body.password;
+    }
+
+    const updatedUser = await user.save();
+
+    res.json({
+      _id: updatedUser._id,
+      name: updatedUser.name,
+      email: updatedUser.email,
+      pic: updatedUser.pic,
+      isAdmin: updatedUser.isAdmin,
+      token: generateToken(updatedUser._id),
+    });
+  } else {
+    res.status(404);
+    throw new Error("User Not Found");
+  }
+});
+
+//@description     Delete user profile
+//@route           DELETE /api/user/profile
+//@access          Protected
+const deleteUserProfile = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user._id);
+
+  if (user) {
+    // Remover usuário de todos os chats
+    await Chat.updateMany({ users: user._id }, { $pull: { users: user._id } });
+
+    // Deletar chats onde o usuário é o único membro ou é admin de grupo
+    await Chat.deleteMany({
+      $or: [{ users: { $size: 0 } }, { groupAdmin: user._id }],
+    });
+
+    // Deletar todas as mensagens do usuário
+    await Message.deleteMany({ sender: user._id });
+    await encryptedMessage.deleteMany({ sender: user._id });
+    await encryptedMessage.deleteMany({ destinatario: user._id });
+
+    // Deletar o usuário
+    await user.deleteOne();
+
+    res.json({ message: "User removed successfully" });
+  } else {
+    res.status(404);
+    throw new Error("User Not Found");
+  }
+});
+
+module.exports = {
+  allUsers,
+  registerUser,
+  authUser,
+  getUserProfile,
+  updateUserProfile,
+  deleteUserProfile,
+};

@@ -1,7 +1,5 @@
-import { Button } from "@chakra-ui/button";
 import { useDisclosure } from "@chakra-ui/hooks";
 import { Input } from "@chakra-ui/input";
-import { Box, Text } from "@chakra-ui/layout";
 import {
   Menu,
   MenuButton,
@@ -17,7 +15,6 @@ import {
   DrawerOverlay,
 } from "@chakra-ui/modal";
 import { Tooltip } from "@chakra-ui/tooltip";
-import { Image } from "@chakra-ui/react";
 import { BellIcon, ChevronDownIcon } from "@chakra-ui/icons";
 import { Avatar } from "@chakra-ui/avatar";
 import { useHistory } from "react-router-dom";
@@ -26,13 +23,13 @@ import axios from "axios";
 import { useToast } from "@chakra-ui/toast";
 import ChatLoading from "../ChatLoading";
 import { Spinner } from "@chakra-ui/spinner";
-import ProfileModal from "./ProfileModal";
 import NotificationBadge from "react-notification-badge";
 import { Effect } from "react-notification-badge";
 import { getSender } from "../../config/ChatLogics";
 import UserListItem from "../userAvatar/UserListItem";
 import { ChatState } from "../../Context/ChatProvider";
-
+import UserProfileModal from "./UserProfileModal";
+import "./SideDrawer.css";
 
 function SideDrawer() {
   const [search, setSearch] = useState("");
@@ -85,19 +82,18 @@ function SideDrawer() {
       setSearchResult(data);
     } catch (error) {
       toast({
-        title: "Error Occured!",
+        title: "Error Occurred!",
         description: "Failed to Load the Search Results",
         status: "error",
         duration: 5000,
         isClosable: true,
         position: "bottom-left",
       });
+      setLoading(false);
     }
   };
 
   const accessChat = async (userId) => {
-    console.log(userId);
-
     try {
       setLoadingChat(true);
       const config = {
@@ -121,47 +117,39 @@ function SideDrawer() {
         isClosable: true,
         position: "bottom-left",
       });
+      setLoadingChat(false);
     }
   };
 
   return (
     <>
-      <Box
-        d="flex"
-        justifyContent="space-between"
-        alignItems="center"
-        bg="white"
-        w="100%"
-        p="5px 10px 5px 10px"
-        borderWidth="5px"
-      >
+      <div className="sidedrawer-container">
         <Tooltip label="Search Users to chat" hasArrow placement="bottom-end">
-          <Button variant="ghost" onClick={onOpen}>
+          <button className="search-button" onClick={onOpen}>
             <i className="fas fa-search"></i>
-            <Text d={{ base: "none", md: "flex" }} px={4}>
-              Search User
-            </Text>
-          </Button>
+            <span>Search User</span>
+          </button>
         </Tooltip>
-        <Box d="flex" alignItems="center"> {/* Nova div para centralizar imagem e texto */}
-          <Text fontSize="2xl" fontFamily="Work sans">
-            CryptoChat
-          </Text>
-        </Box>
-        <div>
+
+        <h1 className="app-title">CryptoChat</h1>
+
+        <div className="header-actions">
           <Menu>
-            <MenuButton p={1}>
+            <MenuButton className="notification-btn">
               <NotificationBadge
                 count={notification.length}
                 effect={Effect.SCALE}
               />
-              <BellIcon fontSize="2xl" m={1} />
+              <BellIcon className="bell-icon" />
             </MenuButton>
-            <MenuList pl={2}>
-              {!notification.length && "No New Messages"}
+            <MenuList className="dropdown-menu" pl={2}>
+              {!notification.length && (
+                <MenuItem className="dropdown-item">No New Messages</MenuItem>
+              )}
               {notification.map((notif) => (
                 <MenuItem
                   key={notif._id}
+                  className="dropdown-item"
                   onClick={() => {
                     setSelectedChat(notif.chat);
                     setNotification(notification.filter((n) => n !== notif));
@@ -174,40 +162,48 @@ function SideDrawer() {
               ))}
             </MenuList>
           </Menu>
+
           <Menu>
-            <MenuButton as={Button} bg="white" rightIcon={<ChevronDownIcon />}>
+            <MenuButton className="user-menu-btn">
               <Avatar
                 size="sm"
                 cursor="pointer"
                 name={user.name}
                 src={user.pic}
               />
+              <ChevronDownIcon className="chevron-icon" />
             </MenuButton>
-            <MenuList>
-              <ProfileModal user={user}>
-                <MenuItem>My Profile</MenuItem>{" "}
-              </ProfileModal>
+            <MenuList className="dropdown-menu">
+              <UserProfileModal>
+                <MenuItem className="dropdown-item">My Profile</MenuItem>
+              </UserProfileModal>
               <MenuDivider />
-              <MenuItem onClick={logoutHandler}>Logout</MenuItem>
+              <MenuItem className="dropdown-item" onClick={logoutHandler}>
+                Logout
+              </MenuItem>
             </MenuList>
           </Menu>
         </div>
-      </Box>
+      </div>
 
       <Drawer placement="left" onClose={onClose} isOpen={isOpen}>
         <DrawerOverlay />
-        <DrawerContent>
-          <DrawerHeader borderBottomWidth="1px">Search Users</DrawerHeader>
+        <DrawerContent className="search-drawer">
+          <DrawerHeader className="search-drawer-header">
+            Search Users
+          </DrawerHeader>
           <DrawerBody>
-            <Box d="flex" pb={2}>
-              <Input
+            <div className="search-input-container">
+              <input
+                className="search-input"
                 placeholder="Search by name or email"
-                mr={2}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
-              <Button onClick={handleSearch}>Go</Button>
-            </Box>
+              <button className="search-go-btn" onClick={handleSearch}>
+                Go
+              </button>
+            </div>
             {loading ? (
               <ChatLoading />
             ) : (
@@ -219,7 +215,7 @@ function SideDrawer() {
                 />
               ))
             )}
-            {loadingChat && <Spinner ml="auto" d="flex" />}
+            {loadingChat && <Spinner ml="auto" d="flex" color="#00a88e" />}
           </DrawerBody>
         </DrawerContent>
       </Drawer>

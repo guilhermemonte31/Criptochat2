@@ -1,60 +1,43 @@
-import {
-  Box,
-  Container,
-  Tab,
-  TabList,
-  TabPanel,
-  TabPanels,
-  Tabs,
-  Text,
-} from "@chakra-ui/react";
-import { useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useHistory } from "react-router";
 import Login from "../components/Authentication/Login";
 import Signup from "../components/Authentication/Signup";
+import "./Homepage.css";
 
 function Homepage() {
   const history = useHistory();
+  const [activeTab, setActiveTab] = useState("login");
 
   useEffect(() => {
     const user = JSON.parse(localStorage.getItem("userInfo") || "null");
-
     if (user) history.push("/chats");
   }, [history]);
 
   return (
-    <Container maxW="xl" centerContent>
-      <Box
-        d="flex"
-        justifyContent="center"
-        p={3}
-        bg="white"
-        w="100%"
-        m="40px 0 15px 0"
-        borderRadius="lg"
-        borderWidth="1px"
-      >
-        <Text fontSize="4xl" fontFamily="Work sans">
-          Talk-A-Tive
-        </Text>
-      </Box>
-      <Box bg="white" w="100%" p={4} borderRadius="lg" borderWidth="1px">
-        <Tabs isFitted variant="soft-rounded">
-          <TabList mb="1em">
-            <Tab>Login</Tab>
-            <Tab>Sign Up</Tab>
-          </TabList>
-          <TabPanels>
-            <TabPanel>
-              <Login />
-            </TabPanel>
-            <TabPanel>
-              <Signup />
-            </TabPanel>
-          </TabPanels>
-        </Tabs>
-      </Box>
-    </Container>
+    <div className="homepage-container">
+      <div className="login-card">
+        <h1 className="login-title">CriptoChat 2.0</h1>
+
+        <div className="tabs-container">
+          <button
+            className={`tab-button ${activeTab === "login" ? "active" : ""}`}
+            onClick={() => setActiveTab("login")}
+          >
+            Login
+          </button>
+          <button
+            className={`tab-button ${activeTab === "signup" ? "active" : ""}`}
+            onClick={() => setActiveTab("signup")}
+          >
+            Sign Up
+          </button>
+        </div>
+
+        <div className="form-container">
+          {activeTab === "login" ? <Login /> : <Signup />}
+        </div>
+      </div>
+    </div>
   );
 }
 

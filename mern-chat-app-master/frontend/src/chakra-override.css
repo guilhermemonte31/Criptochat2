@@ -1,0 +1,92 @@
+/* Forçar z-index para todos os componentes do Chakra UI */
+
+/* Modais */
+.chakra-modal__overlay {
+    z-index: 1300 !important;
+}
+
+.chakra-modal__content-container {
+    z-index: 1400 !important;
+}
+
+.chakra-modal__content {
+    z-index: 1400 !important;
+}
+
+/* Drawers */
+.chakra-drawer__overlay {
+    z-index: 1300 !important;
+}
+
+.chakra-drawer__content {
+    z-index: 1400 !important;
+}
+
+/* Menus */
+.chakra-menu__menu-list {
+    z-index: 1500 !important;
+}
+
+.chakra-menu__menu-button {
+    z-index: auto !important;
+}
+
+/* Popovers */
+.chakra-popover__popper {
+    z-index: 1500 !important;
+}
+
+.chakra-popover__content {
+    z-index: 1500 !important;
+}
+
+/* Tooltips */
+.chakra-tooltip {
+    z-index: 1800 !important;
+}
+
+/* Toast notifications */
+.chakra-toast {
+    z-index: 1700 !important;
+}
+
+.chakra-toast__inner {
+    z-index: 1700 !important;
+}
+
+/* Portal - container de todos os overlays */
+.chakra-portal {
+    z-index: 1300 !important;
+}
+
+.chakra-portal>div {
+    z-index: inherit !important;
+}
+
+/* Alert Dialog */
+[role="alertdialog"] {
+    z-index: 1600 !important;
+}
+
+.chakra-alert-dialog__overlay {
+    z-index: 1500 !important;
+}
+
+.chakra-alert-dialog__content {
+    z-index: 1600 !important;
+}
+
+/* Garantir que elementos de fundo fiquem atrás */
+.chatpage-container,
+.chat-content,
+.mychats-container,
+.chatbox-container,
+.singlechat-container {
+    z-index: 1 !important;
+    position: relative;
+}
+
+.sidedrawer-container {
+    z-index: 10 !important;
+    position: relative;
+}

@@ -1,22 +1,48 @@
-@import url("https://fonts.googleapis.com/css2?family=Work+Sans:wght@300&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Work+Sans:wght@300;400;600;700&display=swap");
 
 .App {
   min-height: 100vh;
   display: flex;
-  background-image: url("./background.png");
-  background-position: center;
-  background-size: cover;
 }
 
+/* Scrollbar customizada */
 ::-webkit-scrollbar {
-  width: 0px;
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 17, 35, 0.3);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(136, 136, 136, 0.281);
+  background: rgba(0, 168, 142, 0.6);
+  border-radius: 10px;
 }
 
-/* Handle on hover */
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: rgba(0, 168, 142, 0.8);
+}
+
+/* Corrigir z-index de todos os modais e menus do Chakra */
+.chakra-modal__overlay,
+.chakra-drawer__overlay {
+  z-index: 9998 !important;
+}
+
+.chakra-modal__content-container,
+.chakra-drawer__content {
+  z-index: 9999 !important;
+}
+
+.chakra-menu__menu-list {
+  z-index: 9999 !important;
+}
+
+.chakra-popover__popper {
+  z-index: 9999 !important;
+}
+
+/* Alert Dialog */
+.chakra-modal__content {
+  z-index: 10000 !important;
 }

@@ -1,208 +1,134 @@
 const asyncHandler = require("express-async-handler");
-const {Message, encryptedMessage} = require("../models/messageModel");
+const { encryptedMessage } = require("../models/messageModel");
 const User = require("../models/userModel");
 const Chat = require("../models/chatModel");
-const forge = require("node-forge");
 
-//@description     Get all Messages
-//@route           GET /api/Message/:chatId
-//@access          Protected
+/*
+  ==========================================================
+   🔐 SISTEMA DE MENSAGENS CIFRADAS - EXPLICAÇÃO DO FLUXO
+  ==========================================================
+  1️⃣ O cliente (frontend) gera um par de chaves RSA:
+      - Pública (PEM): compartilhada com outros usuários via servidor.
+      - Privada (CryptoKey WebCrypto): armazenada localmente no navegador.
+
+  2️⃣ Ao enviar uma mensagem:
+      - O navegador cifra o conteúdo com a chave pública do destinatário.
+      - O resultado (base64, RSA-OAEP) é enviado ao servidor.
+
+  3️⃣ O servidor:
+      - Recebe o conteúdo cifrado (sem texto puro).
+      - Apenas armazena no banco e distribui via Socket/REST.
+      - Mantém registros (logs) de auditoria e fluxo.
+
+  4️⃣ O destinatário:
+      - Recebe o conteúdo cifrado e o decifra localmente
+        usando sua chave privada guardada no navegador.
+
+  ➤ O servidor nunca tem acesso ao conteúdo original das mensagens.
+*/
+
+//
+// @desc  Buscar todas as mensagens cifradas de um chat
+// @route GET /api/message/:chatId
+// @access Protected
+//
 const allMessages = asyncHandler(async (req, res) => {
   try {
-    const messages = await encryptedMessage.find({ chat: req.params.chatId })
+    console.log("\n[MENSAGENS] Iniciando busca de mensagens cifradas...");
+    const { chatId } = req.params;
+
+    const messages = await encryptedMessage
+      .find({
+        chat: chatId,
+        $or: [
+          { destinatario: req.user._id },   // mensagens destinadas ao usuário
+          { sender: req.user._id },         // ou mensagens que o usuário enviou
+        ],
+      })
       .populate("sender", "name pic email")
-      .populate("chat");
+      .populate("destinatario", "name email")
+      .populate("chat")
+      .sort({ createdAt: 1 });
+
+
+    console.log(`${messages.length} mensagens encontradas para o chat ${chatId}`);
+    console.log("Enviando mensagens cifradas para o cliente...");
     res.json(messages);
   } catch (error) {
-    res.status(400);
-    throw new Error(error.message);
+    console.error("Erro ao buscar mensagens:", error);
+    res.status(400).json({ message: error.message });
   }
 });
 
 
-
-//@description     Create New Message
-//@route           POST /api/Message/
-//@access          Protected
+//
+// @desc  Armazenar nova mensagem (já cifrada pelo cliente)
+// @route POST /api/message
+// @access Protected
+//
 const sendMessage = asyncHandler(async (req, res) => {
-  console.log(req.body);
+  console.log("\n=== RECEBENDO NOVA MENSAGEM CIFRADA ===");
 
-  const { content, chatId } = req.body;
+  const { content, chatId, destinatarioId } = req.body;
 
   if (!content || !chatId) {
-    console.log("Invalid data passed into request");
+    console.log("Dados inválidos: faltando conteúdo ou ID do chat.");
     return res.sendStatus(400);
   }
-  console.log("\x1b[33mTeste1\x1b[0m"); // Amarelo
 
-  // var newMessage = {
-  //   sender: req.user._id,
-  //   content: content,
-  //   chat: chatId,
-  // };
+  try {
+    console.log("Localizando chat...");
+    const chat = await Chat.findById(chatId).populate("users", "name email");
+    if (!chat) {
+      console.log("Chat não encontrado.");
+      return res.status(404).json({ message: "Chat not found" });
+    }
 
-  
-  const senderEmail = req.user.email;
-  const sender = chatId.users.find(user => user.email === senderEmail);
-  console.log("Sender public key: ", sender.publicKey);
+    const sender = req.user._id;
+    const destinatario = destinatarioId || null;
 
-  if (!sender) {
-    return res.status(400).json({ message: "Sender not found in chat" });
-  }
-  
-
-  const destinatarios = chatId.users.filter(user => user.email !== senderEmail);
-  console.log("Destinatarios: ", destinatarios);
-  destinatarios.forEach(destinatario => {
-    console.log("Destinatario: ", destinatario.name, "- public key: ", destinatario.publicKey);
-  });
-
-  if(destinatarios.length === 0) {
-    return res.status(400).json({ message: "No recipients found in chat" });
-  }
-
-  console.log("Mensagem verdadeira: ", content);
-
-  const remetentePublicKey = sender.publicKey;
-  console.log("Chave pública do remetente: ", remetentePublicKey);
-  const msgCriptografadaRemetente = await encryptMsg(content, remetentePublicKey);
-  console.log("Mensagem criptografada para o remetente: ", msgCriptografadaRemetente.toString('base64'));
-
-
-  const versoesMsgCriptografada = [];
-  for(const destinatario of destinatarios) {
-    const destinatarioPublicKeyPem = destinatario.publicKey;
-    console.log("Chave pública do destinatario: ", destinatarioPublicKeyPem);
-    const encrypetdMsg = await encryptMsg(content, destinatarioPublicKeyPem);
-    console.log("TESTEEEE");
-    versoesMsgCriptografada.push({
-      dest: destinatario.name,
-      msgCript: encrypetdMsg.toString('base64')
+    // 🔒 Conteúdo já está cifrado pelo cliente via WebCrypto (RSA-OAEP)
+    console.log("Armazenando mensagem cifrada no banco...");
+    const newMessage = await encryptedMessage.create({
+      sender,
+      destinatario,
+      content, // Conteúdo cifrado em Base64 (não altere!)
+      chat: chat._id,
     });
-    console.log(`Mensagem criptografada para ${destinatario.name}: `, encrypetdMsg.toString('base64'));
-  }
-  
-  versoesMsgCriptografada.forEach(({dest, msgCript}) => {
-    console.log(`Mensagem para ${dest}: ${msgCript}`);
-  });
-  
-  console.log("\x1b[33mTeste111\x1b[0m"); // Amarelo
 
+    // Popular informações do remetente e do chat
+    let populatedMessage = await encryptedMessage.findById(newMessage._id)
+      .populate("sender", "name pic email")
+      .populate("chat");
 
-  const msgsCriptografadas = [];
-  for(const destinatario of destinatarios) {
-    const destinatarioID = destinatario._id;
-    const destinatarioPublicKeyPem = destinatario.publicKey;
-    const encrypetdMsg = await encryptMsg(content, destinatarioPublicKeyPem);
-    const dadosMsgCriptografada = {
-      sender: sender._id,
-      destinatario: destinatarioID,
-      content: encrypetdMsg.toString('base64'),
-      chat: chatId,
-    };
-    let msgCriptografada = await encryptedMessage.create(dadosMsgCriptografada);
-    msgsCriptografadas.push(msgCriptografada);
-  }
-  
-  console.log("\x1b[33mTeste122\x1b[0m"); // Amarelo
-
-  res.json({ versoesMsgCriptografada, msgsCriptografadas });
-
-  const dadosMsgCriptografadaRemetente = {
-    sender: sender._id,
-    content: msgCriptografadaRemetente.toString('base64'),
-    chat: chatId,
-  };
-  
-  console.log("\x1b[33mTeste1444\x1b[0m"); // Amarelo
-  let msgCriptografadaRemetenteFinal = await encryptedMessage.create(dadosMsgCriptografadaRemetente);
-
-  console.log("\x1b[33mTeste2\x1b[0m"); // Amarelo
-  try{
-    mensagemCriptografadaRemetente = await msgCriptografadaRemetenteFinal
-      .populate("sender", "name pic")
-      .populate("chat")
-      .execPopulate();
-    mensagemCriptografadaRemetente = await mensagemCriptografadaRemetente
-    .populate("chat")
-    .execPopulate();
-    mensagemCriptografadaRemetente = await User.populate(mensagemCriptografadaRemetente, {
+    populatedMessage = await User.populate(populatedMessage, {
       path: "chat.users",
       select: "name pic email",
     });
 
-    const msgCriptografadasPopuladas = await Promise.all(
-      msgsCriptografadas.map(async (msg) => {
-        let msgPopulada = await msg
-          .populate("sender", "name pic")
-          .execPopulate();
-        msgPopulada = await msgPopulada
-          .populate("chat")
-          .execPopulate();
-        msgPopulada = await User.populate(msgPopulada, {
-          path: "chat.users",
-          select: "name pic email",
-        });
-      })
+    // Atualizar última mensagem do chat
+    await Chat.findByIdAndUpdate(chat._id, { latestMessage: populatedMessage });
 
-    );
-    console.log("\x1b[33mTeste3654664\x1b[0m"); // Amarelo
-    await Chat.findByIdAndUpdate(chatId, { latestMessage: mensagemCriptografadaRemetente });
-    
-  console.log("\x1b[33mTeste366666\x1b[0m"); // Amarelo
-    res.json({mensagemCriptografadaRemetente, msgCriptografadasPopuladas});
-    console.log("\x1b[33mTeste4\x1b[0m"); // Amarelo
+    console.log("Mensagem cifrada armazenada com sucesso!");
+    console.log("ID:", newMessage._id);
+    console.log("Remetente:", req.user.name);
+    console.log("Chat:", chat._id);
+    console.log("Tamanho do conteúdo cifrado:", content.length, "bytes");
 
+    res.json(populatedMessage);
   } catch (error) {
-    res.status(400);
-    throw new Error(error.message);
+    console.error("Erro ao salvar mensagem:", error);
+    res.status(400).json({ message: error.message });
   }
-  console.log("\x1b[33mTeste3\x1b[0m"); // Amarelo
+
+  console.log("Fim do processamento da mensagem.\n");
 });
 
-  
 
-const encryptMsg = async (message, publicKeyPem) => {
-  try {
-    const publicKey = forge.pki.publicKeyFromPem(publicKeyPem);
-    const encrypted = publicKey.encrypt(forge.util.encodeUtf8(message), 'RSA-OAEP');
-    return forge.util.encode64(encrypted);
-  } catch (error) {
-    console.error("Error encrypting message: ", error);
-    throw error;
-  }
-};
-
-const decryptMsg = (privateKeyPem, encryptedMessage) => {
-  try {
-    const privateKey = forge.pki.privateKeyFromPem(privateKeyPem);
-    const decrypted = privateKey.decrypt(forge.util.decode64(encryptedMessage), 'RSA-OAEP');
-    return forge.util.decodeUtf8(decrypted);
-  } catch (error) {
-    console.error("Error decrypting message: ", error);
-    throw error;
-  }
-};
-
-
-  
-
-  // try {
-  //   var message = await Message.create(newMessage);
-
-  //   message = await message.populate("sender", "name pic").execPopulate();
-  //   message = await message.populate("chat").execPopulate();
-  //   message = await User.populate(message, {
-  //     path: "chat.users",
-  //     select: "name pic email",
-  //   });
-
-  //   await Chat.findByIdAndUpdate(req.body.chatId, { latestMessage: message });
-
-  //   res.json(message);
-  // } catch (error) {
-  //   res.status(400);
-  //   throw new Error(error.message);
-  // }
-
+//
+// 🔒 NOTA:
+// As funções de criptografia e descriptografia foram removidas,
+// pois agora o processo é inteiramente realizado no cliente.
+// O servidor apenas armazena e entrega dados cifrados.
+//
 module.exports = { allMessages, sendMessage };
