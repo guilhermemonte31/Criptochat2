@@ -53,6 +53,8 @@ const registerUser = asyncHandler(async (req, res) => {
       _id: user._id,
       name: user.name,
       email: user.email,
+      password: user.password,
+      publicKey: user.publicKey,
       isAdmin: user.isAdmin,
       pic: user.pic,
       token: generateToken(user._id),
@@ -60,6 +62,23 @@ const registerUser = asyncHandler(async (req, res) => {
   } else {
     res.status(400);
     throw new Error("User not found");
+  }
+});
+
+const updatePublicKey = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+  const { newPublicKey } = req.body;
+
+  console.log("[DEBUG] Rota de rotação de chaves acessada ", userId, newPublicKey);
+
+  const user = await User.findById(userId);
+  if (user) {
+    user.publicKey = newPublicKey;
+    await user.save();
+    res.json({ message: "Chave pública atualizada com sucesso" });
+  } else {
+    res.status(404);
+    throw new Error("Usuário não encontrado");
   }
 });
 
@@ -76,6 +95,8 @@ const authUser = asyncHandler(async (req, res) => {
       _id: user._id,
       name: user.name,
       email: user.email,
+      password: user.password,
+      publicKey: user.publicKey,
       isAdmin: user.isAdmin,
       pic: user.pic,
       token: generateToken(user._id),
@@ -97,6 +118,8 @@ const getUserProfile = asyncHandler(async (req, res) => {
       _id: user._id,
       name: user.name,
       email: user.email,
+      password: user.password,
+      publicKey: user.publicKey,
       pic: user.pic,
       isAdmin: user.isAdmin,
     });
@@ -172,6 +195,7 @@ module.exports = {
   allUsers,
   registerUser,
   authUser,
+  updatePublicKey,
   getUserProfile,
   updateUserProfile,
   deleteUserProfile,

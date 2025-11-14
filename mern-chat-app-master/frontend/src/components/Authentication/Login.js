@@ -35,6 +35,8 @@ async function deriveAesKey(password, salt) {
 
 // Função para descriptografar a chave privada armazenada
 async function decryptPrivateKey(encryptedData, password) {
+  
+  console.log("decryptPrivateKey called with:", encryptedData, password);
   const salt = Uint8Array.from(atob(encryptedData.salt), c => c.charCodeAt(0));
   const iv = Uint8Array.from(atob(encryptedData.iv), c => c.charCodeAt(0));
   const cipherBytes = Uint8Array.from(atob(encryptedData.cipher), c => c.charCodeAt(0));
@@ -103,6 +105,8 @@ const Login = () => {
         { email, password },
         config
       );
+      data.rawPassword = password; // Armazena a senha original para uso futuro
+      console.log(data);
 
       const encryptedPrivateKeyJson = localStorage.getItem(`${data.name}_privateKey`);
         if (!encryptedPrivateKeyJson) {
@@ -124,6 +128,7 @@ const Login = () => {
       let privateKey;
       try {
         privateKey = await decryptPrivateKey(encryptedPrivateKey, password);
+        console.log("superteste: ", privateKey);
 
         const privateKeyJwk = await crypto.subtle.exportKey("jwk", privateKey);
 
@@ -143,16 +148,16 @@ const Login = () => {
         return;
       }
 
-      if (data.publicKey) {
-        const publicKey = await crypto.subtle.importKey(
-          "spki",
-          Uint8Array.from(atob(data.publicKey), c => c.charCodeAt(0)),
-          { name: "RSA-OAEP", hash: "SHA-256" },
-          true,
-          ["encrypt"]
-        );
-        setUser({ ...data, privateKey, publicKey });
-      }
+      // if (data.publicKey) {
+      //   const publicKey = await crypto.subtle.importKey(
+      //     "spki",
+      //     Uint8Array.from(atob(data.publicKey), c => c.charCodeAt(0)),
+      //     { name: "RSA-OAEP", hash: "SHA-256" },
+      //     true,
+      //     ["encrypt"]
+      //   );
+      //   setUser({ ...data, privateKey, publicKey });
+      // }
 
       toast({
         title: "Login Successful",
@@ -161,11 +166,9 @@ const Login = () => {
         isClosable: true,
         position: "bottom",
       });
-
       // Guarda o usuário e a chave descriptografada na memória
       setUser({ ...data, privateKey });
       localStorage.setItem("userInfo", JSON.stringify(data));
-      
       setLoading(false);
       history.push("/chats");
       } catch (error) {

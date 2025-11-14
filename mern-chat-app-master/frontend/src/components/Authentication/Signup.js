@@ -32,6 +32,7 @@ const Signup = () => {
   const [pic, setPic] = useState();
   const [picLoading, setPicLoading] = useState(false);
 
+    
   const arrayBufferToBase64 = (buffer) => {
     const bytes = new Uint8Array(buffer);
     let binary = "";
@@ -109,6 +110,48 @@ const Signup = () => {
       salt: arrayBufferToBase64(salt.buffer),
     };
   };
+  
+
+
+
+
+  
+async function decryptPrivateKey(encryptedData, password) {
+  const salt = Uint8Array.from(atob(encryptedData.salt), c => c.charCodeAt(0));
+  const iv = Uint8Array.from(atob(encryptedData.iv), c => c.charCodeAt(0));
+  const cipherBytes = Uint8Array.from(atob(encryptedData.cipher), c => c.charCodeAt(0));
+
+  const aesKey = await deriveAesKey(password, salt);
+  let decrypted;
+  try {
+    decrypted = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv },
+      aesKey,
+      cipherBytes
+    );
+    console.log("[abc] DECRYPTED PRIVATE KEY ARRAY BUFFER:", decrypted);
+  } catch (e) {
+    console.error("Decryption failed:", e);
+    throw e;
+  }
+
+  // Importa diretamente o ArrayBuffer descriptografado
+  return await crypto.subtle.importKey(
+    "pkcs8",
+    decrypted,
+    {
+      name: "RSA-OAEP",
+      hash: "SHA-256",
+    },
+    true,
+    ["decrypt"]
+  );
+}
+
+
+
+
+
 
   
   const submitHandler = async () => {
@@ -147,6 +190,10 @@ const Signup = () => {
         ["encrypt", "decrypt"]
       );
 
+      console.log("supertesteChaves RSA geradas:", keyPair);
+      console.log("supertesteChave publica RSA geradas:", keyPair.publicKey);
+      console.log("supertesteChave privada RSA geradas:", keyPair.privateKey);
+
       //ArrayBuffer -> base64 -> PEM (public + private)
       const spki = await window.crypto.subtle.exportKey("spki", keyPair.publicKey);
       const publicB64 = arrayBufferToBase64(spki);
@@ -162,7 +209,15 @@ const Signup = () => {
 
       const publicKeyPem = await exportPublicKeyToPem(keyPair.publicKey);
       const privateKeyBytes = await exportPrivateKeyBytes(keyPair.privateKey);
+      console.log("[DEBUG] PRIVATECHAVE PRIVADA EM BYTES", privateKeyBytes);
       const encryptedPrivate = await encryptPrivateKey(privateKeyBytes, password);
+      console.log("[DEBUG] PRIVATECHAVE PRIVADA ENCRYPTED", encryptedPrivate);
+
+
+
+      const testedecrypt = await decryptPrivateKey(encryptedPrivate, password);
+      console.log("[abc] TESTE DE DECRYPT DA PRIVATE KEY", testedecrypt);
+      
 
       const config = {
         headers: {
@@ -180,12 +235,14 @@ const Signup = () => {
         },
         config
       );
+      data.rawPassword = password; // Armazena a senha original para uso futuro
 
       clearOldPrivateKeys(name);
 
       localStorage.setItem(`${name}_privateKey`, JSON.stringify(encryptedPrivate));
 
       localStorage.setItem("userInfo", JSON.stringify(data));
+      console.log("[DEBUG] DATA RETORNADO NO SIGNUP:", data);
 
       console.log(data);
       toast({

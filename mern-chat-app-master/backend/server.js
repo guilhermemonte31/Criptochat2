@@ -21,7 +21,7 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json()); // to accept json data
+//app.use(express.json()); // to accept json data
 
 // app.get("/", (req, res) => {
 //   res.send("API Running!");
