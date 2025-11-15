@@ -32,6 +32,10 @@ const Signup = () => {
   const [pic, setPic] = useState();
   const [picLoading, setPicLoading] = useState(false);
 
+  const [emailError, setEmailError] = useState(false);
+  const [passwordLengthError, setPasswordLengthError] = useState(false);
+  const [passwordCharError, setPasswordCharError] = useState(false);
+
     
   const arrayBufferToBase64 = (buffer) => {
     const bytes = new Uint8Array(buffer);
@@ -149,13 +153,36 @@ async function decryptPrivateKey(encryptedData, password) {
 }
 
 
+const isEmailValid = (email) => {
+  // Regex simples para verificar formato de email (ex: user@domain.com)
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
 
+// Função de validação para a complexidade da senha
+const isPasswordStrong = (password) => {
+  // Pelo menos 6 caracteres
+  const isLengthValid = password.length >= 6;
+  // Pelo menos uma letra (maiuscula ou minuscula)
+  const hasLetter = /[a-zA-Z]/.test(password);
+  // Pelo menos um número
+  const hasNumber = /[0-9]/.test(password);
+
+  return { isLengthValid, hasLetter, hasNumber };
+};
 
 
 
   
   const submitHandler = async () => {
     setPicLoading(true);
+    
+    let temErro = false;
+    setEmailError(false);
+    setPasswordLengthError(false);
+    setPasswordCharError(false);
+
+
     if (!name || !email || !password || !confirmpassword) {
       toast({
         title: "Please Fill all the Feilds",
@@ -167,6 +194,56 @@ async function decryptPrivateKey(encryptedData, password) {
       setPicLoading(false);
       return;
     }
+
+    if(!isEmailValid(email)) {
+      toast({
+        title: "Please enter a valid email address",
+        status: "warning",
+        duration: 5000,
+        isClosable: true,
+        position: "bottom",
+      });
+      setEmailError(true);
+      temErro = true;
+    }
+
+const passwordValidation = isPasswordStrong(password);
+    if (!passwordValidation.isLengthValid) {
+      toast({
+            title: "Password must be at least 6 characters long",
+            status: "warning",
+            duration: 5000,
+            isClosable: true,
+            position: "bottom",
+          });
+      setPasswordLengthError(true);
+      temErro = true;
+    }
+    if (!passwordValidation.hasLetter || !passwordValidation.hasNumber) {
+      toast({
+            title: "Password must contain at least one letter and one number",
+            status: "warning",
+            duration: 5000,
+            isClosable: true,
+            position: "bottom",
+          });
+      setPasswordCharError(true);
+      temErro = true;
+    }
+
+    if (temErro) {
+      toast({
+        title: "Validation Error",
+        description: "Some fields are invalid.",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+        position: "bottom",
+      });
+      setPicLoading(false);
+      return; // Para a execução se houver erros de validação
+    }
+
     if (password !== confirmpassword) {
       toast({
         title: "Passwords Do Not Match",
@@ -175,8 +252,10 @@ async function decryptPrivateKey(encryptedData, password) {
         isClosable: true,
         position: "bottom",
       });
+      setPicLoading(false);
       return;
     }
+    console.log("Todos os campos são válidos, continuando cadastro");
     console.log(name, email, password, pic);
     try {
       const keyPair = await window.crypto.subtle.generateKey(
@@ -190,10 +269,7 @@ async function decryptPrivateKey(encryptedData, password) {
         ["encrypt", "decrypt"]
       );
 
-      console.log("supertesteChaves RSA geradas:", keyPair);
-      console.log("supertesteChave publica RSA geradas:", keyPair.publicKey);
-      console.log("supertesteChave privada RSA geradas:", keyPair.privateKey);
-
+      
       //ArrayBuffer -> base64 -> PEM (public + private)
       const spki = await window.crypto.subtle.exportKey("spki", keyPair.publicKey);
       const publicB64 = arrayBufferToBase64(spki);
@@ -209,14 +285,14 @@ async function decryptPrivateKey(encryptedData, password) {
 
       const publicKeyPem = await exportPublicKeyToPem(keyPair.publicKey);
       const privateKeyBytes = await exportPrivateKeyBytes(keyPair.privateKey);
-      console.log("[DEBUG] PRIVATECHAVE PRIVADA EM BYTES", privateKeyBytes);
+      //console.log("[DEBUG] PRIVATECHAVE PRIVADA EM BYTES", privateKeyBytes);
       const encryptedPrivate = await encryptPrivateKey(privateKeyBytes, password);
-      console.log("[DEBUG] PRIVATECHAVE PRIVADA ENCRYPTED", encryptedPrivate);
+      //console.log("[DEBUG] PRIVATECHAVE PRIVADA ENCRYPTED", encryptedPrivate);
 
 
 
       const testedecrypt = await decryptPrivateKey(encryptedPrivate, password);
-      console.log("[abc] TESTE DE DECRYPT DA PRIVATE KEY", testedecrypt);
+      //console.log("[abc] TESTE DE DECRYPT DA PRIVATE KEY", testedecrypt);
       
 
       const config = {
@@ -242,7 +318,7 @@ async function decryptPrivateKey(encryptedData, password) {
       localStorage.setItem(`${name}_privateKey`, JSON.stringify(encryptedPrivate));
 
       localStorage.setItem("userInfo", JSON.stringify(data));
-      console.log("[DEBUG] DATA RETORNADO NO SIGNUP:", data);
+      //console.log("[DEBUG] DATA RETORNADO NO SIGNUP:", data);
 
       console.log(data);
       toast({
@@ -334,7 +410,8 @@ async function decryptPrivateKey(encryptedData, password) {
           type="email"
           placeholder="Enter Your Email Address"
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(e) => {setEmail(e.target.value); setEmailError(false);}
+        }
         />
       </div>
 
@@ -346,7 +423,7 @@ async function decryptPrivateKey(encryptedData, password) {
             type={show ? "text" : "password"}
             placeholder="Enter Password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) => {setPassword(e.target.value); setPasswordLengthError(false); setPasswordCharError(false);}}
           />
           <button
             className="show-password-btn"
