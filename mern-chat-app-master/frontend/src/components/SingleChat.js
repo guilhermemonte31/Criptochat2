@@ -1,3 +1,7 @@
+// ============================================================================
+// VERSÃO PARA DEMONSTRAÇÃO ACADÊMICA - COM LOGS DETALHADOS
+// ============================================================================
+
 import { FormControl } from "@chakra-ui/form-control";
 import { Input } from "@chakra-ui/input";
 import { Box, Text } from "@chakra-ui/layout";
@@ -17,7 +21,6 @@ import UpdateGroupChatModal from "./miscellaneous/UpdateGroupChatModal";
 import { ChatState } from "../Context/ChatProvider";
 import "./SingleChat.css";
 
-// Importar funções do sistema híbrido
 import {
   hybridEncrypt,
   hybridDecrypt,
@@ -38,9 +41,8 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   const [istyping, setIsTyping] = useState(false);
   const [privateKey, setPrivateKey] = useState(null);
 
-  // Gerenciamento de sequências
-  const sequenceMapRef = useRef(new Map()); // Map<chatId, Map<senderId, lastSeq>>
-  const mySequenceRef = useRef(new Map()); // Map<chatId, myNextSeq>
+  const sequenceMapRef = useRef(new Map());
+  const mySequenceRef = useRef(new Map());
 
   const toast = useToast();
 
@@ -56,22 +58,11 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   const { selectedChat, setSelectedChat, user, notification, setNotification } =
     ChatState();
 
-  /**
-   * Carrega a chave privada do sessionStorage
-   */
   const loadPrivateKey = async () => {
     try {
       const privateKeyJwkStr = sessionStorage.getItem("privateKeyJwk");
       if (!privateKeyJwkStr) {
         console.warn("⚠️ Nenhuma chave privada encontrada na sessão.");
-        toast({
-          title: "Private Key Missing",
-          description: "Please log in again to restore your encryption key.",
-          status: "error",
-          duration: 5000,
-          isClosable: true,
-          position: "bottom",
-        });
         return null;
       }
 
@@ -81,31 +72,18 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
       return privateKeyJwk;
     } catch (err) {
       console.error("❌ Erro ao carregar chave privada:", err);
-      toast({
-        title: "Encryption Error",
-        description: "Failed to load your encryption key.",
-        status: "error",
-        duration: 5000,
-        isClosable: true,
-        position: "bottom",
-      });
       return null;
     }
   };
 
-  /**
-   * Obtém o próximo número de sequência para envio
-   */
   const getNextSequenceNumber = async (chatId) => {
     try {
-      // Tenta obter do cache local primeiro
       if (mySequenceRef.current.has(chatId)) {
         const next = mySequenceRef.current.get(chatId);
         mySequenceRef.current.set(chatId, next + 1);
         return next;
       }
 
-      // Busca do servidor
       const config = {
         headers: { Authorization: `Bearer ${user.token}` },
       };
@@ -115,26 +93,20 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
         config
       );
 
-      // Armazena no cache
       mySequenceRef.current.set(chatId, data.sequence + 1);
 
-      console.log(`📊 Sequência obtida do servidor: ${data.sequence}`);
+      console.log(`📊 Sequência obtida: ${data.sequence}`);
       return data.sequence;
     } catch (error) {
       console.error("❌ Erro ao obter sequência:", error);
-      // Fallback: usa timestamp como sequência temporária
       return Date.now() % 1000000;
     }
   };
 
-  /**
-   * Valida número de sequência de mensagem recebida
-   */
   const validateMessageSequence = (envelope, chatId) => {
     const senderId = envelope.metadata.senderId;
     const receivedSeq = envelope.metadata.sequence;
 
-    // Inicializa map do chat se não existir
     if (!sequenceMapRef.current.has(chatId)) {
       sequenceMapRef.current.set(chatId, new Map());
     }
@@ -143,10 +115,8 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     const expectedSeq = chatSequences.get(senderId) || 0;
 
     try {
-      // Valida sequência
       validateSequence(receivedSeq, expectedSeq, 10);
 
-      // Atualiza última sequência conhecida
       if (receivedSeq > expectedSeq) {
         chatSequences.set(senderId, receivedSeq);
       }
@@ -154,21 +124,10 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
       return true;
     } catch (error) {
       console.error("⚠️ Validação de sequência falhou:", error.message);
-      toast({
-        title: "Security Warning",
-        description: error.message,
-        status: "warning",
-        duration: 5000,
-        isClosable: true,
-        position: "bottom",
-      });
       return false;
     }
   };
 
-  /**
-   * Decifra mensagem usando sistema híbrido
-   */
   const decryptMessage = async (envelopeStr, chatId) => {
     if (!privateKey) {
       console.warn("⚠️ Chave privada não disponível");
@@ -176,71 +135,164 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     }
 
     try {
-      // Parse do envelope
       const envelope =
         typeof envelopeStr === "string" ? JSON.parse(envelopeStr) : envelopeStr;
 
-      // ⭐ CORREÇÃO: Verificar se a mensagem é para o usuário atual
+      // ========================================================================
+      // 🎓 DEMONSTRAÇÃO 1: MOSTRAR COMPONENTES DO ENVELOPE
+      // ========================================================================
+      console.log("\n" + "=".repeat(70));
+      console.log("📦 DEMONSTRAÇÃO: COMPONENTES DO ENVELOPE");
+      console.log("=".repeat(70));
+      console.log(
+        "🔐 Session Key Cifrada (primeiros 40 chars):",
+        envelope.encryptedKey.substring(0, 40) + "..."
+      );
+      console.log(
+        "📄 Ciphertext (primeiros 40 chars):",
+        envelope.ciphertext.substring(0, 40) + "..."
+      );
+      console.log("🎲 IV (Initialization Vector):", envelope.iv);
+      console.log("🛡️ AUTH TAG (Tag de Integridade):", envelope.authTag);
+      console.log(
+        "📋 Metadados Protegidos:",
+        JSON.stringify(envelope.metadata, null, 2)
+      );
+      console.log("=".repeat(70) + "\n");
+
+      // Verificar destinatário
       if (envelope.metadata.recipientId !== user._id) {
         console.log(
           `ℹ️ Ignorando mensagem destinada a outro usuário (${envelope.metadata.recipientId})`
         );
-        return null; // Retorna null para indicar que não deve ser exibida
+        return null;
       }
 
-      // VALIDAÇÃO 1: Estrutura do envelope
+      // ========================================================================
+      // 🎓 DEMONSTRAÇÃO 2: VALIDAÇÃO DE ESTRUTURA
+      // ========================================================================
+      console.log("\n" + "=".repeat(70));
+      console.log("🔍 DEMONSTRAÇÃO: VALIDAÇÃO DE ESTRUTURA");
+      console.log("=".repeat(70));
       try {
         validateEnvelope(envelope, user._id, null);
+        console.log("✅ Estrutura do envelope: VÁLIDA");
+        console.log("   ✓ encryptedKey presente");
+        console.log("   ✓ ciphertext presente");
+        console.log("   ✓ iv presente");
+        console.log("   ✓ authTag presente");
+        console.log("   ✓ metadata completa");
       } catch (validationError) {
-        console.error(
-          "❌ Validação do envelope falhou:",
-          validationError.message
-        );
+        console.error("❌ Estrutura INVÁLIDA:", validationError.message);
+        console.log("=".repeat(70) + "\n");
         return "[Envelope inválido]";
       }
+      console.log("=".repeat(70) + "\n");
 
-      // VALIDAÇÃO 2: Timestamp
+      // ========================================================================
+      // 🎓 DEMONSTRAÇÃO 3: VALIDAÇÃO DE TIMESTAMP
+      // ========================================================================
+      console.log("\n" + "=".repeat(70));
+      console.log("⏰ DEMONSTRAÇÃO: VALIDAÇÃO DE TIMESTAMP");
+      console.log("=".repeat(70));
+      const messageDate = new Date(envelope.metadata.timestamp);
+      const now = new Date();
+      const age = now - messageDate;
+      console.log("📅 Timestamp da mensagem:", messageDate.toLocaleString());
+      console.log("📅 Timestamp atual:", now.toLocaleString());
+      console.log("⏱️ Idade da mensagem:", Math.floor(age / 1000), "segundos");
+
       try {
         validateTimestamp(envelope.metadata.timestamp);
+        console.log("✅ Timestamp: VÁLIDO (mensagem recente)");
       } catch (timestampError) {
-        console.warn("⚠️ Timestamp inválido:", timestampError.message);
-        // Continua mesmo com timestamp inválido (mensagem antiga)
+        console.warn("⚠️ Timestamp:", timestampError.message);
+      }
+      console.log("=".repeat(70) + "\n");
+
+      // ========================================================================
+      // 🎓 DEMONSTRAÇÃO 4: VALIDAÇÃO DE SEQUÊNCIA (ANTI-REPLAY)
+      // ========================================================================
+      console.log("\n" + "=".repeat(70));
+      console.log("🔢 DEMONSTRAÇÃO: VALIDAÇÃO DE SEQUÊNCIA (ANTI-REPLAY)");
+      console.log("=".repeat(70));
+      console.log(
+        "📊 Número de sequência recebido:",
+        envelope.metadata.sequence
+      );
+
+      if (!sequenceMapRef.current.has(chatId)) {
+        console.log("ℹ️ Primeira mensagem deste sender neste chat");
+      } else {
+        const chatSeqs = sequenceMapRef.current.get(chatId);
+        const lastSeq = chatSeqs.get(envelope.metadata.senderId) || 0;
+        console.log("📊 Última sequência conhecida:", lastSeq);
+        console.log("📊 Nova sequência:", envelope.metadata.sequence);
+
+        if (envelope.metadata.sequence <= lastSeq) {
+          console.log("❌ ALERTA: Possível REPLAY ATTACK detectado!");
+        } else {
+          console.log("✅ Sequência em ordem correta");
+        }
       }
 
-      // VALIDAÇÃO 3: Sequência (previne replay/reorder)
       if (!validateMessageSequence(envelope, chatId)) {
+        console.log("❌ Validação de sequência: FALHOU");
+        console.log("=".repeat(70) + "\n");
         return "[Sequência inválida - possível replay attack]";
       }
+      console.log("✅ Validação de sequência: PASSOU");
+      console.log("=".repeat(70) + "\n");
 
-      // DESCRIPTOGRAFIA
+      // ========================================================================
+      // 🎓 DEMONSTRAÇÃO 5: DESCRIPTOGRAFIA E VALIDAÇÃO DE INTEGRIDADE
+      // ========================================================================
+      console.log("\n" + "=".repeat(70));
+      console.log(
+        "🔓 DEMONSTRAÇÃO: DESCRIPTOGRAFIA + VALIDAÇÃO DE INTEGRIDADE"
+      );
+      console.log("=".repeat(70));
+      console.log("🔑 Iniciando descriptografia híbrida...");
+      console.log("   1. Descriptografando session key com RSA...");
+
       const plaintext = await hybridDecrypt(envelope, privateKey);
 
-      console.log("✅ Mensagem decifrada com sucesso");
-      console.log("📋 Metadados validados:", {
-        sender: envelope.metadata.senderId,
-        recipient: envelope.metadata.recipientId,
-        sequence: envelope.metadata.sequence,
-        timestamp: new Date(envelope.metadata.timestamp).toLocaleString(),
-      });
+      console.log("   2. Descriptografando mensagem com AES-GCM...");
+      console.log("   3. Validando tag de integridade (GCM)...");
+      console.log("✅ INTEGRIDADE VERIFICADA!");
+      console.log("✅ Tag GCM válida - nenhuma adulteração detectada");
+      console.log("💬 Mensagem decifrada:", plaintext);
+      console.log("=".repeat(70) + "\n");
 
       return plaintext;
     } catch (error) {
-      console.error("❌ Erro na descriptografia:", error);
+      // ========================================================================
+      // 🎓 DEMONSTRAÇÃO 7: DETECÇÃO DE ADULTERAÇÃO
+      // ========================================================================
+      console.log("\n" + "=".repeat(70));
+      console.log("❌ DEMONSTRAÇÃO: FALHA NA VALIDAÇÃO DE INTEGRIDADE");
+      console.log("=".repeat(70));
+      console.error("❌ Erro:", error.message);
 
       if (error.message.includes("INTEGRITY_VIOLATION")) {
-        return "[ALERTA: Mensagem adulterada - falha na verificação de integridade]";
+        console.log("🚨 ADULTERAÇÃO DETECTADA!");
+        console.log("   A tag de autenticação GCM não corresponde aos dados");
+        console.log("   Possíveis causas:");
+        console.log("   • Ciphertext foi modificado");
+        console.log("   • Metadados foram alterados");
+        console.log("   • AuthTag foi corrompido");
+        console.log("   • Session key incorreta");
+        console.log("=".repeat(70) + "\n");
+        return "[🚨 ALERTA: Mensagem adulterada - falha na verificação de integridade]";
       }
 
+      console.log("=".repeat(70) + "\n");
       return "[Falha ao descriptografar]";
     }
   };
 
-  /**
-   * Busca e decifra todas as mensagens do chat
-   */
   const fetchMessages = async (isRefresh = false) => {
     if (!selectedChat || !privateKey) {
-      console.log("⏸️ Aguardando chat selecionado e chave privada...");
       return;
     }
 
@@ -262,9 +314,8 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
         config
       );
 
-      console.log(`📦 ${data.length} envelopes cifrados recebidos`);
+      console.log(`📦 ${data.length} envelopes cifrados recebidos do servidor`);
 
-      // Decifrar todas as mensagens
       const decryptedMessages = await Promise.all(
         data.map(async (msg) => {
           const decrypted = await decryptMessage(msg.content, selectedChat._id);
@@ -275,7 +326,6 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
         })
       );
 
-      // ⭐ CORREÇÃO: Filtrar mensagens null (não destinadas ao usuário) e inválidas
       const validMessages = decryptedMessages.filter(
         (msg) =>
           msg.decrypted !== null &&
@@ -283,7 +333,6 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
           !msg.decrypted.startsWith("[")
       );
 
-      // Remove duplicatas baseado em conteúdo + timestamp
       const uniqueMessages = validMessages.filter(
         (msg, index, self) =>
           index ===
@@ -308,25 +357,14 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     } catch (error) {
       console.error("❌ Erro ao buscar mensagens:", error);
       setLoading(false);
-      toast({
-        title: "Erro!",
-        description: "Falha ao carregar mensagens.",
-        status: "error",
-        duration: 5000,
-        isClosable: true,
-        position: "bottom",
-      });
     }
   };
 
-  /**
-   * Envia mensagem cifrada usando sistema híbrido
-   */
   const sendMessage = async (event) => {
     if (event.key === "Enter" && newMessage.trim()) {
-      console.log("\n============================================");
-      console.log("🔐 CIFRANDO E ENVIANDO MENSAGEM");
-      console.log("============================================");
+      console.log("\n" + "=".repeat(70));
+      console.log("🔐 DEMONSTRAÇÃO: CIFRANDO E ENVIANDO MENSAGEM");
+      console.log("=".repeat(70));
 
       socket.emit("stop typing", selectedChat._id);
 
@@ -338,24 +376,20 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
           },
         };
 
-        // Obtém informações do chat
         const { data: chatInfo } = await axios.get(
           `/api/chat/${selectedChat._id}`,
           config
         );
 
-        console.log(`👥 Chat com ${chatInfo.users.length} membros`);
+        console.log(`👥 Participantes do chat: ${chatInfo.users.length}`);
 
-        // Cifra mensagem para cada membro
         const encryptedMessages = [];
 
         for (const member of chatInfo.users) {
-          console.log(`\n🔐 Cifrando para ${member.name}...`);
+          console.log(`\n🔐 Cifrando mensagem para: ${member.name}`);
 
-          // Obtém número de sequência
           const sequence = await getNextSequenceNumber(selectedChat._id);
 
-          // Prepara metadados
           const metadata = {
             senderId: user._id,
             recipientId: member._id,
@@ -364,16 +398,33 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
             sequence: sequence,
           };
 
-          console.log("📋 Metadados:", metadata);
+          console.log("📋 Metadados da mensagem:", metadata);
 
-          // Cifra usando sistema híbrido
           const envelope = await hybridEncrypt(
             newMessage,
             member.publicKey,
             metadata
           );
 
-          console.log("✅ Envelope criado para", member.name);
+          // ========================================================================
+          // 🎓 DEMONSTRAÇÃO: COMPONENTES DO ENVELOPE CRIADO
+          // ========================================================================
+          console.log("\n📦 ENVELOPE CRIADO:");
+          console.log(
+            "   🔐 Encrypted Key (40 chars):",
+            envelope.encryptedKey.substring(0, 40) + "..."
+          );
+          console.log(
+            "   📄 Ciphertext (40 chars):",
+            envelope.ciphertext.substring(0, 40) + "..."
+          );
+          console.log("   🎲 IV:", envelope.iv);
+          console.log("   🛡️ AUTH TAG:", envelope.authTag);
+          console.log(
+            "   📊 Tamanho total:",
+            JSON.stringify(envelope).length,
+            "bytes"
+          );
 
           encryptedMessages.push({
             destinatarioId: member._id,
@@ -381,9 +432,8 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
           });
         }
 
-        // Envia cada versão cifrada
         console.log(
-          `\n📤 Enviando ${encryptedMessages.length} envelopes cifrados...`
+          `\n📤 Enviando ${encryptedMessages.length} envelopes ao servidor...`
         );
 
         await Promise.all(
@@ -400,31 +450,12 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
           )
         );
 
-        console.log("✅ Todas as mensagens enviadas com sucesso!");
-        console.log("🔒 Proteções aplicadas:");
-        console.log("   ✓ Confidencialidade (AES-256-GCM)");
-        console.log("   ✓ Integridade (Authentication Tag)");
-        console.log("   ✓ Autenticidade (AAD)");
-        console.log("   ✓ Anti-Replay (Sequence Numbers)");
-        console.log("   ✓ Forward Secrecy (Unique Session Keys)");
-        console.log("============================================\n");
-
         setNewMessage("");
         socket.emit("new message", { room: selectedChat._id });
       } catch (error) {
         console.error("\n❌ ERRO AO ENVIAR MENSAGEM");
         console.error("Erro:", error.response?.data || error.message);
-        console.log("============================================\n");
-
-        toast({
-          title: "Erro!",
-          description:
-            error.response?.data?.message || "Falha ao enviar mensagem.",
-          status: "error",
-          duration: 5000,
-          isClosable: true,
-          position: "bottom",
-        });
+        console.log("=".repeat(70) + "\n");
       }
     }
   };
@@ -451,7 +482,6 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     }, timerLength);
   };
 
-  // Effect: Inicializa socket e carrega chave privada
   useEffect(() => {
     loadPrivateKey();
 
@@ -468,7 +498,6 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     };
   }, []);
 
-  // Effect: Busca mensagens quando chat muda
   useEffect(() => {
     if (selectedChat && privateKey) {
       fetchMessages(false);
@@ -476,7 +505,6 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     }
   }, [selectedChat, privateKey]);
 
-  // Effect: Atualiza mensagens via socket
   useEffect(() => {
     if (!socket) return;
 
@@ -493,7 +521,6 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     <>
       {selectedChat ? (
         <div className="singlechat-container">
-          {/* Header do chat */}
           <div className="chat-header">
             <div className="chat-header-left">
               <button
@@ -529,7 +556,6 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
             </div>
           </div>
 
-          {/* Área de mensagens */}
           <div className="messages-container">
             {loading ? (
               <div className="messages-loading">
@@ -539,7 +565,6 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
               <ScrollableChat messages={messages} />
             )}
 
-            {/* Indicador de digitação */}
             {istyping && (
               <div className="typing-indicator">
                 <div className="typing-dot"></div>
@@ -549,7 +574,6 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
             )}
           </div>
 
-          {/* Input de mensagem */}
           <div className="message-input-container">
             <div className="message-input-wrapper">
               <input
