@@ -28,6 +28,15 @@ const userSchema = mongoose.Schema(
       default: false,
     },
     publicKey: { type: String, required: true },
+    verified: {
+      type: Boolean,
+      required: true,
+      default: false,
+    },
+    emailVerifiedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,

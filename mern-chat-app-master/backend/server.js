@@ -1,9 +1,10 @@
+require("dotenv").config();
+
 const express = require("express");
 const http = require("http");
 const https = require("https");
 const fs = require("fs");
 const path = require("path");
-const dotenv = require("dotenv");
 const colors = require("colors");
 const connectDB = require("./config/db");
 const { Server } = require("socket.io");
@@ -13,7 +14,6 @@ const userRoutes = require("./routes/userRoutes");
 const chatRoutes = require("./routes/chatRoutes");
 const messageRoutes = require("./routes/messageRoutes");
 
-dotenv.config();
 connectDB();
 
 const app = express();

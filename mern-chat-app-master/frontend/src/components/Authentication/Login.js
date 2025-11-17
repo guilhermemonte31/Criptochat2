@@ -169,9 +169,49 @@ const Login = () => {
       setLoading(false);
       history.push("/chats");
       } catch (error) {
+        const message = error.response?.data?.message;
+
+        // 🔥 Caso especial: email não verificado
+        if (message === "Email not verified") {
+          toast({
+            title: "Email não verificado",
+            description: "Verifique sua caixa de entrada ou reenvie o e-mail de verificação.",
+            status: "warning",
+            duration: 6000,
+            isClosable: true,
+            position: "bottom",
+          });
+
+          // Envia requisição para reenviar e-mail
+          try {
+            await axios.post("/api/user/resend-verification", { email });
+            toast({
+              title: "E-mail reenviado",
+              description: "Cheque sua caixa de entrada.",
+              status: "success",
+              duration: 6000,
+              isClosable: true,
+              position: "bottom",
+            });
+          } catch (e) {
+            toast({
+              title: "Erro ao reenviar verificação",
+              description: e.response?.data?.message || "Falha inesperada",
+              status: "error",
+              duration: 6000,
+              isClosable: true,
+              position: "bottom",
+            });
+          }
+
+          setLoading(false);
+          return;
+        }
+
+        // Erros normais
         toast({
           title: "Error Occurred!",
-          description: error.response?.data?.message || "Login failed",
+          description: message || "Login failed",
           status: "error",
           duration: 5000,
           isClosable: true,
@@ -181,10 +221,6 @@ const Login = () => {
       }
     };
 
-  const handleGuestLogin = () => {
-    setEmail("guest@example.com");
-    setPassword("123456");
-  };
   return (
     <>
       <div className="form-group">

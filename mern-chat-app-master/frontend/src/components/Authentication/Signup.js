@@ -181,24 +181,23 @@ const Signup = () => {
         config
       );
 
-      clearOldPrivateKeys(name);
-
-      localStorage.setItem(`${name}_privateKey`, JSON.stringify(encryptedPrivate));
-
-      localStorage.setItem("userInfo", JSON.stringify(data));
+      clearOldPrivateKeys(data.name);
+      localStorage.setItem(`${data.name}_privateKey`, JSON.stringify(encryptedPrivate));
 
       console.log(data);
       toast({
-        title: "Registration Successful",
+        title: "Conta criada!",
+        description: "Confirme seu e-mail para ativar sua conta.",
         status: "success",
-        duration: 5000,
+        duration: 7000,
         isClosable: true,
         position: "bottom",
       });
-      //localStorage.setItem("superprivatekey", privateKey);
 
       setPicLoading(false);
-      history.push("/chats");
+
+      // Volta pra home
+      history.push("/");
       
     } catch (error) {
       toast({
