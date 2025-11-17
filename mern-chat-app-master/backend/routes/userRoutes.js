@@ -7,6 +7,7 @@ const {
   updateUserProfile,
   deleteUserProfile,
   getUserProfile,
+  sendVerificationOtp,
 } = require("../controllers/userControllers");
 const { protect } = require("../middleware/authMiddleware");
 const User = require("../models/userModel");
@@ -17,6 +18,7 @@ router.route("/").get(protect, allUsers);
 router.route("/").post(registerUser);
 router.post("/login", authUser);
 router.post("/rotatekeys",protect, updatePublicKey);
+router.post("/checkemail", sendVerificationOtp);
 
 // router.post("/rotate-keys", protect, async (req, res) => {
 //   console.log("[DEBUG] Rota de rotação de chaves acessada");
