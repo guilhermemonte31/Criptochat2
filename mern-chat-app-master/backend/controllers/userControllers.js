@@ -7,13 +7,14 @@ const { Message, encryptedMessage } = require("../models/messageModel");
 const nodemailer = require('nodemailer');
 
 const transporter = nodemailer.createTransport({
-    service: 'gmail', // Ou 'outlook', 'SendGrid', etc.
+    service: 'gmail', 
     host: "smtp.gmail.com",
     port: 587,
-    secure: false, // true para 465, false para outras portas
+    secure: false, 
     auth: {
-        user: "guilhermemontenegro30@gmail.com",    // Seu e-mail
-        pass: "geydvujigerhqksr" // Sua senha de app ou token
+        user: "guilhermemontenegro30@gmail.com",    
+        pass: "geydvujigerhqksr" // gerar no link: https://myaccount.google.com/apppasswords
+        //obs: a conta deve ter verificação de 2 etapas
     },
 });
 
@@ -217,25 +218,12 @@ const sendVerificationOtp = async (req, res) => {
     }
 
     try {
-        // 1. Verificar se o usuário existe (ou se já existe um usuário com este email)
         const user = await User.findOne({ email });
         
-        // Se o usuário já existe, e você está no SIGNUP, talvez você queira impedir o cadastro
         if (user) {
             return res.status(409).json({ message: "User with this email already exists." });
         }
         
-        // 2. Gerar o número (OTP de 6 dígitos)
-        // const otp = Math.floor(100000 + Math.random() * 900000).toString();
-        // console.log("OTP gerado no backend: ", otp);
-        
-        // 3. Salvar o OTP temporariamente (Idealmente em uma tabela temporária ou no registro do usuário)
-        // **Atenção:** Se você não tem um usuário no BD ainda, você precisa de um modelo temporário,
-        // mas para simplicidade aqui, vamos simular que ele foi salvo em algum lugar para verificação.
-        // Em um sistema real, você salvaria: { email: email, otp: otp, otpExpires: Date.now() + 10 * 60000 }
-        // Para este exemplo, vamos retornar o OTP (inseguro para produção, mas mostra o fluxo):
-        
-        // 4. Configurar e Enviar Email
         const mailOptions = {
             from: "guilhermemontenegro30@gmail.com",
             to: email,
@@ -250,11 +238,9 @@ const sendVerificationOtp = async (req, res) => {
 
         await transporter.sendMail(mailOptions);
         
-        // 5. Retornar Sucesso (sem o OTP por segurança)
-        // O cliente só precisa saber que o email foi enviado.
         res.status(200).json({ 
             message: 'Verification code sent to email.', 
-            otpcode: otpcode // Mantenha isso APENAS para testes/simulação local! Remova em produção.
+            //otpcode: otpcode 
         });
 
     } catch (error) {
