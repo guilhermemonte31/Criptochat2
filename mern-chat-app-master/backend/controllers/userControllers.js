@@ -227,12 +227,13 @@ const sendVerificationOtp = async (req, res) => {
         const mailOptions = {
             from: "guilhermemontenegro30@gmail.com",
             to: email,
-            subject: 'Your Account Verification Code',
+            subject: 'Código de verificação de email: CriptoChat 2.0',
             html: `
-                <h2>Verification Code</h2>
-                <p>Use the following code to complete your registration:</p>
+                <h2>Código de Verificação</h2>
+                <p>Use o código abaixo para confirmar seu login:</p>
                 <h1 style="color: #4CAF50;">${otpcode}</h1>
-                <p>This code is valid for 10 minutes.</p>
+                <p></p>
+                <p>São Paulo Futebol Clube</p>
             `,
         };
 
