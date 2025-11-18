@@ -86,13 +86,17 @@ const registerUser = asyncHandler(async (req, res) => {
 
 const updatePublicKey = asyncHandler(async (req, res) => {
   const userId = req.user._id;
-  const { newPublicKey } = req.body;
-
+  const { newPublicKey, encryptedPrivateKey, encryptedPrivateKeyIV, encryptedPrivateKeySalt } = req.body;
+  console.log("spfc testeeee: ", newPublicKey, " cypher:", encryptedPrivateKey, " iv:", encryptedPrivateKeyIV, " salt:", encryptedPrivateKeySalt);
   console.log("[DEBUG] Rota de rotação de chaves acessada ", userId, newPublicKey);
 
   const user = await User.findById(userId);
   if (user) {
     user.publicKey = newPublicKey;
+    user.encryptedPrivateKey = encryptedPrivateKey;
+    user.encryptedPrivateKeyIV = encryptedPrivateKeyIV;
+    user.encryptedPrivateKeySalt = encryptedPrivateKeySalt;   
+    
     await user.save();
     res.json({ message: "Chave pública atualizada com sucesso" });
   } else {

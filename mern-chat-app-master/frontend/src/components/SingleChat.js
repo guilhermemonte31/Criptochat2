@@ -542,21 +542,26 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
 
     console.log("Atualizando chave publica PEM no banco...");
 
+    
+    //clearOldPrivateKeys(userName);
+    console.log("Atualizando chave privada no localstorage...");
+    const privateKeyBytes = await window.crypto.subtle.exportKey("pkcs8", newKeyPair.privateKey);
+    const encryptedPrivate = await encryptPrivateKey(privateKeyBytes, password);
+    localStorage.setItem(`${userName}_privateKey`, JSON.stringify(encryptedPrivate));
+    console.log("spfc testeeee ", encryptedPrivate.cipher, " iv:", encryptedPrivate.iv, " salt:", encryptedPrivate.salt);
     try{
         await axios.post("/api/user/rotatekeys", {
           newPublicKey: newpublicPem,
+          encryptedPrivateKey: encryptedPrivate.cipher,
+          encryptedPrivateKeyIV: encryptedPrivate.iv,
+          encryptedPrivateKeySalt: encryptedPrivate.salt,
+
         }, config);
         console.log("Chave pública atualizada no servidor.");
       }catch (e){
         console.log("Erro na atualização da chave pública no servidor. ", e);
       }
     
-    console.log("Atualizando chave privada no localstorage...");
-
-
-    const privateKeyBytes = await window.crypto.subtle.exportKey("pkcs8", newKeyPair.privateKey);
-    const encryptedPrivate = await encryptPrivateKey(privateKeyBytes, password);
-    localStorage.setItem(`${userName}_privateKey`, JSON.stringify(encryptedPrivate));
 
     
     console.log("atualizando chave privada no sessionstorage...");
