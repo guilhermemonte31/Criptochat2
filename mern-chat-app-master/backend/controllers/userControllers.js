@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const asyncHandler = require("express-async-handler");
 const User = require("../models/userModel");
 const generateToken = require("../config/generateToken");
@@ -6,18 +8,15 @@ const Chat = require("../models/chatModel");
 const { Message, encryptedMessage } = require("../models/messageModel");
 const nodemailer = require('nodemailer');
 
-require('dotenv').config();
-
 const transporter = nodemailer.createTransport({
-    service: 'gmail', 
-    host: "smtp.gmail.com",
-    port: 587,
-    secure: false, 
+    service: 'gmail',
     auth: {
-        user: process.env.EMAIL_TRANSPORTER,    
-        pass: process.env.PASS_TRANSPORTER // gerar no link: https://myaccount.google.com/apppasswords
-        //obs: a conta deve ter verificação de 2 etapas
+        user: process.env.EMAIL_TRANSPORTER,
+        pass: process.env.PASS_TRANSPORTER
     },
+    tls: {
+        rejectUnauthorized: false
+    }
 });
 
 //@description     Get or Search all users
