@@ -42,7 +42,7 @@ const allUsers = asyncHandler(async (req, res) => {
 const registerUser = asyncHandler(async (req, res) => {
   const { name, email, password, pic, publicKey, 
           encryptedPrivateKey, encryptedPrivateKeyIV, 
-          encryptedPrivateKeySalt, encryptedPrivateKeyTag } = req.body;
+          encryptedPrivateKeySalt} = req.body;
 
   if (!name || !email || !password) {
     res.status(400);
@@ -65,7 +65,6 @@ const registerUser = asyncHandler(async (req, res) => {
     encryptedPrivateKey,
     encryptedPrivateKeyIV,
     encryptedPrivateKeySalt,
-    encryptedPrivateKeyTag,
   });
 
   if (user) {
@@ -120,7 +119,6 @@ const authUser = asyncHandler(async (req, res) => {
       encryptedPrivateKey: user.encryptedPrivateKey,
       encryptedPrivateKeyIV: user.encryptedPrivateKeyIV,
       encryptedPrivateKeySalt: user.encryptedPrivateKeySalt,
-      encryptedPrivateKeyTag: user.encryptedPrivateKeyTag,
       isAdmin: user.isAdmin,
       pic: user.pic,
       token: generateToken(user._id),
@@ -267,7 +265,6 @@ const updateEncryptedPrivateKey = asyncHandler(async (req, res) => {
     encryptedPrivateKey,
     encryptedPrivateKeyIV,
     encryptedPrivateKeySalt,
-    encryptedPrivateKeyTag
   } = req.body;
 
   const user = await User.findById(userId);
@@ -280,7 +277,6 @@ const updateEncryptedPrivateKey = asyncHandler(async (req, res) => {
   user.encryptedPrivateKey = encryptedPrivateKey;
   user.encryptedPrivateKeyIV = encryptedPrivateKeyIV;
   user.encryptedPrivateKeySalt = encryptedPrivateKeySalt;
-  user.encryptedPrivateKeyTag = encryptedPrivateKeyTag;
 
   await user.save();
 

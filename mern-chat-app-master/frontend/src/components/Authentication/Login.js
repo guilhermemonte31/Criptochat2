@@ -101,23 +101,8 @@ const Login = () => {
         { email, password },
         config
       );
-      data.rawPassword = password; // Armazena a senha original para uso futuro
-      console.log(data);
 
-      let encryptedPrivateKeyJson = localStorage.getItem(`${data.name}_privateKey`);
-        if (!encryptedPrivateKeyJson) {
-          toast({
-          title: "Chave privada não encontrada.",
-          description: "Por favor, cadastre-se novamente para gerar as chaves.",
-          status: "error",
-          duration: 8000,
-          isClosable: true,
-          position: "bottom",
-        });
-        setLoading(false);
-        return;
-      }
-
+      let encryptedPrivateKeyJson = null;
       let encryptedPrivateKey = null;
 
       if (encryptedPrivateKeyJson) {
@@ -125,10 +110,9 @@ const Login = () => {
       } else {
         // 2. Não existe localmente → usa o que vem do servidor
         encryptedPrivateKey = {
-            encrypted: data.encryptedPrivateKey,
+            cipher: data.encryptedPrivateKey,
             iv: data.encryptedPrivateKeyIV,
             salt: data.encryptedPrivateKeySalt,
-            tag: data.encryptedPrivateKeyTag
         };
 
         // Opcional: salvar no localStorage como cache

@@ -119,15 +119,11 @@ const Signup = () => {
 
     const encryptedBytes = new Uint8Array(encrypted);
 
-    // TAG = últimos 16 bytes
-    const tag = encryptedBytes.slice(encryptedBytes.length - 16);
-
     // Cipher = resto
     const cipherBytes = encryptedBytes.slice(0, encryptedBytes.length - 16);
 
     return {
-      cipher: btoa(String.fromCharCode(...cipherBytes)),
-      tag: btoa(String.fromCharCode(...tag)),
+      cipher: arrayBufferToBase64(encrypted),
       iv: arrayBufferToBase64(iv.buffer),
       salt: arrayBufferToBase64(salt.buffer),
     };
@@ -223,7 +219,6 @@ const Signup = () => {
           encryptedPrivateKey: encryptedPrivate.cipher,
           encryptedPrivateKeyIV: encryptedPrivate.iv,
           encryptedPrivateKeySalt: encryptedPrivate.salt,
-          encryptedPrivateKeyTag: encryptedPrivate.tag,
         },
         config
       );
