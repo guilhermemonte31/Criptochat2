@@ -1,14 +1,14 @@
-// Fluxo do codigo: submithandler (verifica os campos) -> sendverificationEmail (gera código e envia email) -> handleVerification (verifica se o código informado é o correto) -> finalRegister (cria chaves) -> registerUser (cria conta)
-
-import { Button } from "@chakra-ui/button";
 import { FormControl, FormLabel } from "@chakra-ui/form-control";
-import { Input, InputGroup, InputRightElement } from "@chakra-ui/input";
-import { VStack } from "@chakra-ui/layout";
+import { Input } from "@chakra-ui/input";
 import { useToast } from "@chakra-ui/toast";
 import axios from "axios";
 import { useState } from "react";
 import { useHistory } from "react-router";
-// Importações sugeridas para o modal do Chakra UI:
+import { Button } from "@chakra-ui/button";
+
+// Fluxo do codigo: submithandler (verifica os campos) -> sendverificationEmail (gera código e envia email) ->
+// -> handleVerification (verifica se o código informado é o correto) -> finalRegister (cria chaves) -> registerUser (cria conta)
+
 import {
   Modal,
   ModalOverlay,
@@ -54,9 +54,8 @@ const Signup = () => {
   const [isVerifying, setIsVerifying] = useState(false); // Loading do botão de verificação
   // ===============================================
 
-  // [ Funções auxiliares (arrayBufferToBase64, base64ToArrayBuffer, exportPublicKeyToPem, exportPrivateKeyBytes, deriveAesKey, encryptPrivateKey, decryptPrivateKey, isEmailValid, isPasswordStrong, postDetails) permanecem as mesmas ]
-
-  // ... (coloque as funções auxiliares aqui: arrayBufferToBase64, base64ToArrayBuffer, exportPublicKeyToPem, exportPrivateKeyBytes, deriveAesKey, encryptPrivateKey, decryptPrivateKey, isEmailValid, isPasswordStrong, postDetails)
+  // [ Funções auxiliares (arrayBufferToBase64, exportPublicKeyToPem, exportPrivateKeyBytes, 
+  // deriveAesKey, encryptPrivateKey, isEmailValid, isPasswordStrong, postDetails) permanecem as mesmas ]
 
   const arrayBufferToBase64 = (buffer) => {
     const bytes = new Uint8Array(buffer);
@@ -67,18 +66,6 @@ const Signup = () => {
     }
 
     return btoa(binary);
-  };
-
-  const base64ToArrayBuffer = (b64) => {
-    const binary = atob(b64);
-    const len = binary.length;
-    const bytes = new Uint8Array(len);
-
-    for (let i = 0; i < len; i++) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-
-    return bytes.buffer;
   };
 
   const exportPublicKeyToPem = async (publicKey) => {
@@ -130,56 +117,31 @@ const Signup = () => {
       privateKeyArrayBuffer
     );
 
+    const encryptedBytes = new Uint8Array(encrypted);
+
+    // TAG = últimos 16 bytes
+    const tag = encryptedBytes.slice(encryptedBytes.length - 16);
+
+    // Cipher = resto
+    const cipherBytes = encryptedBytes.slice(0, encryptedBytes.length - 16);
+
     return {
-      cipher: arrayBufferToBase64(encrypted),
+      cipher: btoa(String.fromCharCode(...cipherBytes)),
+      tag: btoa(String.fromCharCode(...tag)),
       iv: arrayBufferToBase64(iv.buffer),
       salt: arrayBufferToBase64(salt.buffer),
     };
   };
 
-  async function decryptPrivateKey(encryptedData, password) {
-    const salt = Uint8Array.from(atob(encryptedData.salt), (c) =>
-      c.charCodeAt(0)
-    );
-    const iv = Uint8Array.from(atob(encryptedData.iv), (c) => c.charCodeAt(0));
-    const cipherBytes = Uint8Array.from(atob(encryptedData.cipher), (c) =>
-      c.charCodeAt(0)
-    );
+  // ====================== Verificação de Email e Senha ======================
 
-    const aesKey = await deriveAesKey(password, salt);
-    let decrypted;
-    try {
-      decrypted = await crypto.subtle.decrypt(
-        { name: "AES-GCM", iv },
-        aesKey,
-        cipherBytes
-      );
-      console.log("[abc] DECRYPTED PRIVATE KEY ARRAY BUFFER:", decrypted);
-    } catch (e) {
-      console.error("Decryption failed:", e);
-      throw e;
-    }
-
-    // Importa diretamente o ArrayBuffer descriptografado
-    return await crypto.subtle.importKey(
-      "pkcs8",
-      decrypted,
-      {
-        name: "RSA-OAEP",
-        hash: "SHA-256",
-      },
-      true,
-      ["decrypt"]
-    );
-  }
-
+  // Regex simples para verificar formato de email (ex: user@domain.com)
   const isEmailValid = (email) => {
-    // Regex simples para verificar formato de email (ex: user@domain.com)
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
   };
 
-  // Função de validação para a complexidade da senha
+  // Função de validação para a complexidade da senha (mínimo 6 caracteres, pelo menos uma letra e um número)
   const isPasswordStrong = (password) => {
     const isLengthValid = password.length >= 6;
 
@@ -190,11 +152,12 @@ const Signup = () => {
     return { isLengthValid, hasLetter, hasNumber };
   };
 
+  // Seleciona e faz upload da imagem do usuário
   const postDetails = (pics) => {
     setPicLoading(true);
     if (pics === undefined) {
       toast({
-        title: "Please Select an Image!",
+        title: "Por favor, selecione uma imagem!",
         status: "warning",
         duration: 5000,
         isClosable: true,
@@ -202,12 +165,16 @@ const Signup = () => {
       });
       return;
     }
+
     console.log(pics);
+
     if (pics.type === "image/jpeg" || pics.type === "image/png") {
       const data = new FormData();
+
       data.append("file", pics);
       data.append("upload_preset", "chat-app");
       data.append("cloud_name", "piyushproj");
+
       fetch("https://api.cloudinary.com/v1_1/piyushproj/image/upload", {
         method: "post",
         body: data,
@@ -222,9 +189,10 @@ const Signup = () => {
           console.log(err);
           setPicLoading(false);
         });
+
     } else {
       toast({
-        title: "Please Select an Image!",
+        title: "Por favor, selecione uma imagem!",
         status: "warning",
         duration: 5000,
         isClosable: true,
@@ -235,7 +203,7 @@ const Signup = () => {
     }
   };
 
-  
+  // Registra o usuário no sistema com a chave pública e a chave privada criptografada
   const registerUser = async (publicKeyPem, encryptedPrivate) => {
     try {
       const config = {
@@ -244,7 +212,6 @@ const Signup = () => {
         },
       };
 
-      
       const { data } = await axios.post(
         "/api/user",
         {
@@ -253,16 +220,17 @@ const Signup = () => {
           password,
           pic,
           publicKey: publicKeyPem,
+          encryptedPrivateKey: encryptedPrivate.cipher,
+          encryptedPrivateKeyIV: encryptedPrivate.iv,
+          encryptedPrivateKeySalt: encryptedPrivate.salt,
+          encryptedPrivateKeyTag: encryptedPrivate.tag,
         },
         config
       );
       data.rawPassword = password;
       
-
-      
       clearOldPrivateKeys(name);
 
-      
       localStorage.setItem(`${name}_privateKey`, JSON.stringify(encryptedPrivate));
       localStorage.setItem("userInfo", JSON.stringify(data));
 
@@ -274,8 +242,7 @@ const Signup = () => {
         position: "bottom",
       });
 
-      
-      history.push("/chats");
+      history.push("/");
     } catch (error) {
       toast({
         title: "Error Occured!",
@@ -292,14 +259,11 @@ const Signup = () => {
     }
   };
 
-  
-  
-
+  // Registtro final após verificação de email bem sucedida
   const finalRegister = async () => {
     setPicLoading(true);
 
     try {
-      
       const keyPair = await window.crypto.subtle.generateKey(
         {
           name: "RSA-OAEP",
@@ -311,14 +275,10 @@ const Signup = () => {
         ["encrypt", "decrypt"]
       );
 
-      
       const publicKeyPem = await exportPublicKeyToPem(keyPair.publicKey);
-
-      
       const privateKeyBytes = await exportPrivateKeyBytes(keyPair.privateKey);
       const encryptedPrivate = await encryptPrivateKey(privateKeyBytes, password);
 
-      
       await registerUser(publicKeyPem, encryptedPrivate);
     } catch (error) {
       toast({
@@ -348,7 +308,6 @@ const Signup = () => {
     setIsVerifying(true);
 
     try {
-
       if (verificationCode === generatedOtp) {
         toast({
           title: "Email Verified Successfully!",
@@ -359,7 +318,6 @@ const Signup = () => {
         });
         
         onClose(); 
-        
         await finalRegister(); 
         
       } else {
@@ -383,25 +341,23 @@ const Signup = () => {
     } finally {
       setIsVerifying(false);
     }
-    // --------------------------------------------------------
   };
 
-
+  // Envia o email com o código de verificação
   const sendVerificationEmail = async () => {
     
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     setGeneratedOtp(otp);
     
     try {
-      
-      console.log("Email to send OTP to: ", email, otp);
+      console.log("OTP enviado para o email: ", email, otp);
       const datateste = await axios.post("/api/user/checkemail", { email, otpcode: otp });
       console.log("Datateste: ", datateste);
 
       console.log(`[SIMULAÇÃO] Enviando OTP (${otp}) para: ${email}`);
       toast({
-        title: "Verification code sent!",
-        description: `Check your email: ${email}`,
+        title: "Código de verificação enviado!",
+        description: `Cheque seu email: ${email}`,
         status: "info",
         duration: 5000,
         isClosable: true,
@@ -410,8 +366,8 @@ const Signup = () => {
       onOpen(); 
     } catch (error) {
       toast({
-        title: "Error sending email!",
-        description: error.response?.data?.message || "Could not send verification email.",
+        title: "Erro ao enviar email!",
+        description: error.response?.data?.message || "Não foi possível enviar o código de verificação.",
         status: "error",
         duration: 5000,
         isClosable: true,
@@ -424,7 +380,6 @@ const Signup = () => {
   const submitHandler = async () => {
     setPicLoading(true);
 
-    
     let temErro = false;
     setEmailError(false);
     setPasswordLengthError(false);
@@ -432,7 +387,7 @@ const Signup = () => {
 
     if (!name || !email || !password || !confirmpassword) {
       toast({
-        title: "Please Fill all the Feilds",
+        title: "Por favor, preencha todos os campos.",
         status: "warning",
         duration: 5000,
         isClosable: true,
@@ -444,7 +399,7 @@ const Signup = () => {
 
     if (!isEmailValid(email)) {
       toast({
-        title: "Please enter a valid email address",
+        title: "Por favor, insira um email válido.",
         status: "warning",
         duration: 5000,
         isClosable: true,
@@ -457,7 +412,7 @@ const Signup = () => {
     const passwordValidation = isPasswordStrong(password);
     if (!passwordValidation.isLengthValid) {
       toast({
-        title: "Password must be at least 6 characters long",
+        title: "A senha precisa ter pelo menos 6 caracteres.",
         status: "warning",
         duration: 5000,
         isClosable: true,
@@ -468,7 +423,7 @@ const Signup = () => {
     }
     if (!passwordValidation.hasLetter || !passwordValidation.hasNumber) {
       toast({
-        title: "Password must contain at least one letter and one number",
+        title: "A senha deve conter pelo menos uma letra e um número.",
         status: "warning",
         duration: 5000,
         isClosable: true,
@@ -480,7 +435,7 @@ const Signup = () => {
 
     if (password !== confirmpassword) {
       toast({
-        title: "Passwords Do Not Match",
+        title: "As senhas não coincidem.",
         status: "warning",
         duration: 5000,
         isClosable: true,
@@ -491,8 +446,8 @@ const Signup = () => {
     
     if (temErro) {
       toast({
-        title: "Validation Error",
-        description: "Some fields are invalid.",
+        title: "Erro de validação!",
+        description: "Alguns campos estão inválidos.",
         status: "error",
         duration: 5000,
         isClosable: true,
@@ -502,18 +457,14 @@ const Signup = () => {
       return;
       
     }
-
-    
     console.log("Todos os campos são válidos, iniciando verificação de e-mail.");
     await sendVerificationEmail(); 
-    
 
     setPicLoading(false);
   };
 
   return (
     <>
-    
       <div className="form-group">
         <label className="form-label">Nome *</label>
         <input

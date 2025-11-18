@@ -40,7 +40,9 @@ const allUsers = asyncHandler(async (req, res) => {
 //@route           POST /api/user/
 //@access          Public
 const registerUser = asyncHandler(async (req, res) => {
-  const { name, email, password, pic, publicKey } = req.body;
+  const { name, email, password, pic, publicKey, 
+          encryptedPrivateKey, encryptedPrivateKeyIV, 
+          encryptedPrivateKeySalt, encryptedPrivateKeyTag } = req.body;
 
   if (!name || !email || !password) {
     res.status(400);
@@ -60,6 +62,10 @@ const registerUser = asyncHandler(async (req, res) => {
     password,
     pic,
     publicKey,
+    encryptedPrivateKey,
+    encryptedPrivateKeyIV,
+    encryptedPrivateKeySalt,
+    encryptedPrivateKeyTag,
   });
 
   if (user) {
@@ -111,6 +117,10 @@ const authUser = asyncHandler(async (req, res) => {
       email: user.email,
       password: user.password,
       publicKey: user.publicKey,
+      encryptedPrivateKey: user.encryptedPrivateKey,
+      encryptedPrivateKeyIV: user.encryptedPrivateKeyIV,
+      encryptedPrivateKeySalt: user.encryptedPrivateKeySalt,
+      encryptedPrivateKeyTag: user.encryptedPrivateKeyTag,
       isAdmin: user.isAdmin,
       pic: user.pic,
       token: generateToken(user._id),
@@ -251,6 +261,32 @@ const sendVerificationOtp = async (req, res) => {
     }
 };
 
+const updateEncryptedPrivateKey = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+  const {
+    encryptedPrivateKey,
+    encryptedPrivateKeyIV,
+    encryptedPrivateKeySalt,
+    encryptedPrivateKeyTag
+  } = req.body;
+
+  const user = await User.findById(userId);
+
+  if (!user) {
+    res.status(404);
+    throw new Error("User not found");
+  }
+
+  user.encryptedPrivateKey = encryptedPrivateKey;
+  user.encryptedPrivateKeyIV = encryptedPrivateKeyIV;
+  user.encryptedPrivateKeySalt = encryptedPrivateKeySalt;
+  user.encryptedPrivateKeyTag = encryptedPrivateKeyTag;
+
+  await user.save();
+
+  res.json({ message: "Private key updated successfully" });
+});
+
 module.exports = {
   allUsers,
   registerUser,
@@ -260,4 +296,5 @@ module.exports = {
   updateUserProfile,
   deleteUserProfile,
   sendVerificationOtp,
+  updateEncryptedPrivateKey,
 };
