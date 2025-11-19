@@ -1,4 +1,4 @@
-import { FormControl } from "@chakra-ui/form-control";
+import { FormControl, FormLabel } from "@chakra-ui/form-control";
 import { Input } from "@chakra-ui/input";
 import { Box, Text } from "@chakra-ui/layout";
 import "./styles.css";
@@ -18,7 +18,18 @@ import UpdateGroupChatModal from "./miscellaneous/UpdateGroupChatModal";
 import { ChatState } from "../Context/ChatProvider";
 import "./SingleChat.css";
 
-const ENDPOINT = "http://localhost:5000";
+import {
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalFooter,
+  ModalBody,
+  ModalCloseButton,
+  useDisclosure, // Hook para gerenciar o estado do modal
+} from "@chakra-ui/react";
+
+const ENDPOINT = "https://localhost:5000";
 var socket, selectedChatCompare;
 
 // FUNÇÕES DE SUPORTE PARA DECIFRAR A CHAVE PRIVADA SALVA
@@ -226,6 +237,8 @@ const recryptMessage = async (message, oldPrivateKey, newPublicKey) => {
 
 
 const SingleChat = ({ fetchAgain, setFetchAgain }) => {
+  const [show, setShow] = useState(false);
+  const handleClick = () => setShow(!show);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [newMessage, setNewMessage] = useState("");
@@ -234,6 +247,9 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   const [istyping, setIsTyping] = useState(false);
   const [privateKey, setPrivateKey] = useState(null);
   const [isRotatingKeys, setIsRotatingKeys] = useState(false);
+  const [passwordVerification, setPasswordVerification] = useState("");
+  const [isVerifyingPass, setIsVerifyingPass] = useState(false); // Loading do botão de verificação
+  const { isOpen, onOpen, onClose } = useDisclosure();
 
   const toast = useToast();
 
@@ -345,14 +361,6 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
 
       console.log("✅ Todas as mensagens processadas e exibidas no chat.");
 
-
-      // if(checkRotate===1){
-      //   console.log("Iniciando mudança de chaves após refresh...", user.name, user._id);
-      //   const passw = JSON.parse(localStorage.getItem("userInfo")).rawPassword;
-      //   ChangeKeys(testePrivKey, user.name, user._id, user.token, passw);
-      //   checkRotate = 0;
-      // }
-
     } catch (error) {
       console.error("❌ Erro ao buscar mensagens:", error);
       toast({
@@ -463,7 +471,65 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     }, timerLength);
   };
 
-  const changeKeys = async () => {
+  const handlePasswordVerification = async () => {
+    if (!passwordVerification) {
+      toast({
+        title: "Por favor, insira sua senha.",
+        status: "warning",
+        duration: 5000,
+        isClosable: true,
+        position: "bottom",
+      });
+      return;
+    }
+
+    setIsVerifyingPass(true);
+
+    try {
+      // Dados vindos do backend no login
+      const encryptedPrivateKey = {
+        cipher: user.encryptedPrivateKey,
+        iv: user.encryptedPrivateKeyIV,
+        salt: user.encryptedPrivateKeySalt,
+      };
+
+      // Tenta descriptografar com a senha digitada
+      const privateKey = await decryptPrivateKey(encryptedPrivateKey, passwordVerification);
+
+      if (!privateKey) throw new Error("Senha incorreta.");
+
+      // Senha confirmada → salva a chave privada atual no estado
+      setPrivateKey(privateKey);
+
+      // Fechar modal
+      onClose();
+
+      toast({
+        title: "Senha verificada!",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+        position: "bottom",
+      });
+
+      // Chama a rotação AGORA
+      await changeKeys(passwordVerification);
+
+    } catch (error) {
+      toast({
+        title: "Senha incorreta!",
+        description: "Não foi possível validar a senha.",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+        position: "bottom",
+      });
+    } finally {
+      setIsVerifyingPass(false);
+    }
+  };
+
+  const changeKeys = async (verifiedPassword) => {
     const config = {
       headers: { Authorization: `Bearer ${user.token}` },
     };
@@ -482,17 +548,13 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     }
     //console.log("Mudando chaves... ", oldPrivateKey);
 
-    // console.log("Parametros:", userName, userID, userToken, password);
+    // console.log("Parametros:", userName, userID, userToken);
     setIsRotatingKeys(true);
     const userInfos = JSON.parse(localStorage.getItem("userInfo"));
     const userName = userInfos.name;
     const userID = userInfos._id;
     const userToken = userInfos.token;
-    const password = userInfos.rawPassword;
     const oldPrivateKey = privateKey;
-
-
-
 
     const newKeyPair = await window.crypto.subtle.generateKey(
       {
@@ -546,7 +608,7 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     //clearOldPrivateKeys(userName);
     console.log("Atualizando chave privada no localstorage...");
     const privateKeyBytes = await window.crypto.subtle.exportKey("pkcs8", newKeyPair.privateKey);
-    const encryptedPrivate = await encryptPrivateKey(privateKeyBytes, password);
+    const encryptedPrivate = await encryptPrivateKey(privateKeyBytes, verifiedPassword);
     localStorage.setItem(`${userName}_privateKey`, JSON.stringify(encryptedPrivate));
     console.log("spfc testeeee ", encryptedPrivate.cipher, " iv:", encryptedPrivate.iv, " salt:", encryptedPrivate.salt);
     try{
@@ -556,13 +618,14 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
           encryptedPrivateKeyIV: encryptedPrivate.iv,
           encryptedPrivateKeySalt: encryptedPrivate.salt,
 
-        }, config);
+        }, 
+        config);
         console.log("Chave pública atualizada no servidor.");
       }catch (e){
         console.log("Erro na atualização da chave pública no servidor. ", e);
       }
     
-
+    setPasswordVerification("");
     
     console.log("atualizando chave privada no sessionstorage...");
     const privateKeyJwk = await crypto.subtle.exportKey("jwk", newKeyPair.privateKey);
@@ -621,12 +684,9 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
                   </UpdateGroupChatModal>
                 )}
                 <Button
-                  onClick={changeKeys}
-                  isLoading={isRotatingKeys}
-                  loadingText="Rotacionando..."
+                  onClick={onOpen}
                   size="sm"
                   colorScheme="blue"
-                  
                 >
                   Rotacionar Chaves
                 </Button>
@@ -685,6 +745,42 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
           </div>
         </div>
       )}
+
+      {/* === MODAL DE VERIFICAÇÃO DE EMAIL === */}
+      {/* Usando componentes Chakra UI, que você importou, para um modal */}
+      <Modal isOpen={isOpen} onClose={onClose} isCentered>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Verificação de Conta</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <p style={{ marginBottom: "15px" }}>
+              Por favor, insira sua senha novamente para confirmar a rotação de chaves.
+            </p>
+            <FormControl>
+              <FormLabel>Senha</FormLabel>
+              <Input
+                placeholder="Digite sua senha"
+                type={show ? "text" : "password"}
+                maxLength={20}
+                onChange={(e) => setPasswordVerification(e.target.value)}
+                value={passwordVerification}
+              />
+            </FormControl>
+          </ModalBody>
+
+          <ModalFooter>
+            <Button
+              colorScheme="blue"
+              isLoading={isVerifyingPass}
+              onClick={handlePasswordVerification}
+            >
+              Confirmar
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
     </>
   );
 };
