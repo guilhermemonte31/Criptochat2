@@ -20,13 +20,6 @@ const app = express();
 app.use(express.json({ charset: 'utf8' }));
 app.use(express.urlencoded({ extended: true, charset: 'utf8' }));
 
-// Definir charset nas respostas
-app.use((req, res, next) => {
-  res.charset = 'utf-8';
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  next();
-});
-
 // -------------------- Rotas principais --------------------
 app.use("/api/user", userRoutes);
 app.use("/api/chat", chatRoutes);
@@ -53,7 +46,7 @@ const certFile = path.join(certPath, "cert.pem");
 // Gera certificados automaticamente se não existirem
 if (!fs.existsSync(keyFile) || !fs.existsSync(certFile)) {
   console.log("⚙️  Gerando certificados autoassinados...");
-  require("child_process").execSync("node backend/certs/generateCert.js", { stdio: "inherit" });
+  require("child_process").execSync("node certs/generateCert.js", { stdio: "inherit" });
 }
 
 const options = {
