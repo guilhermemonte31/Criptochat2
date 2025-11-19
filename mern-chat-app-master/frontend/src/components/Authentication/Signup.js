@@ -117,11 +117,6 @@ const Signup = () => {
       privateKeyArrayBuffer
     );
 
-    const encryptedBytes = new Uint8Array(encrypted);
-
-    // Cipher = resto
-    const cipherBytes = encryptedBytes.slice(0, encryptedBytes.length - 16);
-
     return {
       cipher: arrayBufferToBase64(encrypted),
       iv: arrayBufferToBase64(iv.buffer),
@@ -222,8 +217,7 @@ const Signup = () => {
         },
         config
       );
-      data.rawPassword = password;
-      
+
       clearOldPrivateKeys(name);
 
       localStorage.setItem(`${name}_privateKey`, JSON.stringify(encryptedPrivate));

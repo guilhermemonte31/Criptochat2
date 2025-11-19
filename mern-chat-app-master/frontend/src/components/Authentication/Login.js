@@ -36,7 +36,6 @@ async function decryptPrivateKey(encryptedData, password) {
   const salt = Uint8Array.from(atob(encryptedData.salt), c => c.charCodeAt(0));
   const iv = Uint8Array.from(atob(encryptedData.iv), c => c.charCodeAt(0));
   const cipherBytes = Uint8Array.from(atob(encryptedData.cipher), c => c.charCodeAt(0));
-
   const aesKey = await deriveAesKey(password, salt);
   let decrypted;
   try {
