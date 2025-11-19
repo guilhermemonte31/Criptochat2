@@ -1,7 +1,3 @@
-import { Button } from "@chakra-ui/button";
-import { FormControl, FormLabel } from "@chakra-ui/form-control";
-import { Input, InputGroup, InputRightElement } from "@chakra-ui/input";
-import { VStack } from "@chakra-ui/layout";
 import { useToast } from "@chakra-ui/toast";
 import axios from "axios";
 import { useState } from "react";
@@ -41,18 +37,6 @@ const Signup = () => {
     }
 
     return btoa(binary);
-  };
-
-  const base64ToArrayBuffer = (b64) => {
-    const binary = atob(b64);
-    const len = binary.length;
-    const bytes = new Uint8Array(len);
-
-    for (let i = 0; i < len; i++) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-
-    return bytes.buffer;
   };
 
   const exportPublicKeyToPem = async (publicKey) => {
