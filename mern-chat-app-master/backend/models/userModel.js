@@ -6,13 +6,13 @@ const userSchema = mongoose.Schema(
     name: {
       type: String,
       required: true,
-      trim: true, // Adicionar trim para remover espaços
+      trim: true, // Adicionando trim para remover espaços
     },
     email: {
       type: String,
       unique: true,
       required: true,
-      lowercase: true, // Converter para minúsculas
+      lowercase: true,
       trim: true,
     },
     password: { type: String, required: true },
@@ -37,7 +37,6 @@ const userSchema = mongoose.Schema(
   },
   {
     timestamps: true,
-    // Garantir UTF-8
     collection: "users",
   }
 );

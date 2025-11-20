@@ -13,7 +13,6 @@ const {
   resetPassword,
 } = require("../controllers/userControllers");
 const { protect } = require("../middleware/authMiddleware");
-const User = require("../models/userModel");
 
 const router = express.Router();
 

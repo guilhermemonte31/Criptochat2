@@ -9,7 +9,7 @@ const Chat = require("../models/chatModel");
   ==========================================================
   1️⃣ O cliente (frontend) gera um par de chaves RSA:
       - Pública (PEM): compartilhada com outros usuários via servidor.
-      - Privada (CryptoKey WebCrypto): armazenada localmente no navegador.
+      - Privada (CryptoKey WebCrypto): armazenada localmente no navegador e no servidor (criptografada).
 
   2️⃣ Ao enviar uma mensagem:
       - O navegador cifra o conteúdo com a chave pública do destinatário.
@@ -171,12 +171,4 @@ const editedMessage = asyncHandler(async (req, res) => {
   }
 });
 
-
-
-//
-// 🔒 NOTA:
-// As funções de criptografia e descriptografia foram removidas,
-// pois agora o processo é inteiramente realizado no cliente.
-// O servidor apenas armazena e entrega dados cifrados.
-//
 module.exports = { allMessages, sendMessage, allMessagesDestinatario, editedMessage };

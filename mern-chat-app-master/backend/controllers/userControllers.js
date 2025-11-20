@@ -378,30 +378,50 @@ const resetPassword = asyncHandler(async (req, res) => {
   // 1️⃣ Atualiza senha
   user.password = password;
 
-  // 2️⃣ Gera novo par RSA
-  const { privateKey, publicKey } = forge.pki.rsa.generateKeyPair(2048);
+  // 2️⃣ Gera novo par RSA-OAEP compatível com WebCrypto (SPKI + PKCS8)
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+    publicExponent: 0x10001,
+    publicKeyEncoding: {
+      type: "spki",
+      format: "pem"
+    },
+    privateKeyEncoding: {
+      type: "pkcs8",
+      format: "der"
+    }
+  });
 
-  const privateKeyPem = forge.pki.privateKeyToPem(privateKey);
-  const publicKeyPem = forge.pki.publicKeyToPem(publicKey);
+  const privateKeyDer = Buffer.from(privateKey); // PKCS8 DER (binary)
+  const publicKeyPem = publicKey;
 
-  // 3️⃣ Criptografar chave privada usando a mesma lógica do cadastro
+  // 3) Criptografar exatamente como signup (AES-GCM sobre bytes)
   const salt = crypto.randomBytes(16);
   const iv = crypto.randomBytes(12);
 
   const keyMaterial = crypto.pbkdf2Sync(password, salt, 100000, 32, "sha256");
 
   const cipher = crypto.createCipheriv("aes-256-gcm", keyMaterial, iv);
-  let encrypted = cipher.update(privateKeyPem, "utf8", "base64");
-  encrypted += cipher.final("base64");
+  const encryptedData = Buffer.concat([
+    cipher.update(privateKeyDer),
+    cipher.final()
+  ]);
 
-  const authTag = cipher.getAuthTag().toString("base64");
+  const authTag = cipher.getAuthTag(); // 16 bytes
 
-  // 4️⃣ Atualizar chaves no DB
+  // WebCrypto output = ciphertext || authTag
+  const ciphertextWithTag = Buffer.concat([encryptedData, authTag]);
+
+  // Base64 igual ao arrayBufferToBase64()
+  const cipherB64 = ciphertextWithTag.toString("base64");
+  const ivB64 = iv.toString("base64");
+  const saltB64 = salt.toString("base64");
+
+  // 4️⃣ Atualizar no banco
   user.publicKey = publicKeyPem;
-
-  user.encryptedPrivateKey = encrypted;
-  user.encryptedPrivateKeyIV = iv.toString("base64");
-  user.encryptedPrivateKeySalt = salt.toString("base64");
+  user.encryptedPrivateKey = cipherB64;
+  user.encryptedPrivateKeyIV = ivB64;
+  user.encryptedPrivateKeySalt = saltB64;
 
   // 5️⃣ Limpar token
   user.resetPasswordToken = undefined;
@@ -413,7 +433,6 @@ const resetPassword = asyncHandler(async (req, res) => {
     message: "Senha redefinida com sucesso. Gere login novamente.",
   });
 });
-
 
 module.exports = {
   allUsers,

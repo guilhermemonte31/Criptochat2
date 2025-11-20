@@ -171,7 +171,7 @@ const Login = () => {
       } catch (error) {
         toast({
           title: "Erro!",
-          description: error.response?.data?.message || "Login falhou.",
+          description: error.response?.data?.message || "Login falhou. E-mail ou senha incorretos.",
           status: "error",
           duration: 5000,
           isClosable: true,

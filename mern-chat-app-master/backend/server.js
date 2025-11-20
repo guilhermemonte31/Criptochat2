@@ -4,7 +4,6 @@ const express = require("express");
 const https = require("https");
 const fs = require("fs");
 const path = require("path");
-const colors = require("colors");
 const connectDB = require("./config/db");
 const { Server } = require("socket.io");
 

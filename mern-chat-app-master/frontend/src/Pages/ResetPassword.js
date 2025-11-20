@@ -1,4 +1,3 @@
-// ResetPassword.js
 import { useState } from "react";
 import {
   FormControl,

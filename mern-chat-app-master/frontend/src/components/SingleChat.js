@@ -1,18 +1,13 @@
 import { FormControl, FormLabel } from "@chakra-ui/form-control";
 import { Input } from "@chakra-ui/input";
-import { Box, Text } from "@chakra-ui/layout";
 import "./styles.css";
-import { IconButton, Spinner, useToast, Button } from "@chakra-ui/react";
+import { Spinner, useToast, Button } from "@chakra-ui/react";
 import { getSender, getSenderFull } from "../config/ChatLogics";
 import { useEffect, useState } from "react";
-import { useHistory } from "react-router";
 import axios from "axios";
 import { ArrowBackIcon } from "@chakra-ui/icons";
 import ProfileModal from "./miscellaneous/ProfileModal";
 import ScrollableChat from "./ScrollableChat";
-import Lottie from "react-lottie";
-import animationData from "../animations/typing.json";
-import Cookies from "js-cookie";
 import io from "socket.io-client";
 import UpdateGroupChatModal from "./miscellaneous/UpdateGroupChatModal";
 import { ChatState } from "../Context/ChatProvider";
@@ -129,18 +124,6 @@ async function decryptPrivateKey(encryptedData, password) {
   );
 }
 
-function clearOldPrivateKeys(currentUserName) {
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (key.endsWith("_privateKey") && key !== `${currentUserName}_privateKey`) {
-      localStorage.removeItem(key);
-      i--; // ajusta o índice porque removemos um item
-    }
-  }
-}
-
-
-
 // Recuperando e decifrando a chave privada do sessionStorage
 const decryptStoredPrivateKey = async (password) => {
   try {
@@ -168,8 +151,6 @@ const decryptStoredPrivateKey = async (password) => {
     return null;
   }
 };
-
-
 
 const encryptMessageForUser = async (message, publicKeyPem) => {
   console.log("xyz criptografando mensagem: ", message, " com chave: ", publicKeyPem);
@@ -202,8 +183,6 @@ const encryptMessageForUser = async (message, publicKeyPem) => {
 
 const decryptMessage = async (encryptedB64, privateKey) => {
   try {
-
-    
     const encryptedBytes = new Uint8Array(arrayBufferFromBase64(encryptedB64));
     const decrypted = await window.crypto.subtle.decrypt(
       { name: "RSA-OAEP" },
@@ -217,24 +196,6 @@ const decryptMessage = async (encryptedB64, privateKey) => {
     //return null;
   }
 };
-
-
-const recryptMessage = async (message, oldPrivateKey, newPublicKey) => {
-  // Descriptografa com a chave antiga
-  const decrypted = await decryptMessage(message, oldPrivateKey);
-  console.log("testeee ", decrypted);
-  if (!decrypted) return null;
-
-  // Criptografa com a nova chave
-  const recrypted = await encryptMessageForUser(decrypted, newPublicKey);
-  console.log("testeee recriptado ", recrypted);
-  return recrypted;
-};
-
-
-
-
-
 
 const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   const [show, setShow] = useState(false);
@@ -253,16 +214,7 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
 
   const toast = useToast();
 
-  const defaultOptions = {
-    loop: true,
-    autoplay: true,
-    animationData: animationData,
-    rendererSettings: {
-      preserveAspectRatio: "xMidYMid slice",
-    },
-  };
-
-  const { selectedChat, setSelectedChat, user, notification, setNotification } = ChatState();
+  const { selectedChat, setSelectedChat, user } = ChatState();
 
   useEffect(() => {
     (async () => {
@@ -553,7 +505,6 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     const userInfos = JSON.parse(localStorage.getItem("userInfo"));
     const userName = userInfos.name;
     const userID = userInfos._id;
-    const userToken = userInfos.token;
     const oldPrivateKey = privateKey;
 
     const newKeyPair = await window.crypto.subtle.generateKey(
