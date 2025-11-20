@@ -27,6 +27,9 @@ const userSchema = mongoose.Schema(
       required: true,
       default: false,
     },
+    resetPasswordToken: { type: String },
+    resetPasswordExpires: { type: Date },
+
     publicKey: { type: String, required: true },
     encryptedPrivateKey: { type: String, required: true },
     encryptedPrivateKeyIV: { type: String, required: true },

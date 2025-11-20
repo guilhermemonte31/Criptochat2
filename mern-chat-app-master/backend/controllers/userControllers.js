@@ -7,6 +7,7 @@ const forge = require("node-forge");
 const Chat = require("../models/chatModel");
 const { Message, encryptedMessage } = require("../models/messageModel");
 const nodemailer = require('nodemailer');
+const crypto = require("crypto");
 
 const transporter = nodemailer.createTransport({
     service: 'gmail',
@@ -287,6 +288,133 @@ const updateEncryptedPrivateKey = asyncHandler(async (req, res) => {
   res.json({ message: "Private key updated successfully" });
 });
 
+/**
+ * @desc Gera token de reset e envia e-mail
+ * @route POST /api/user/request-password-reset
+ * @access Public
+ */
+const requestPasswordReset = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+  if (!email) {
+    return res.status(400).json({ message: "E-mail é obrigatório." });
+  }
+
+  const user = await User.findOne({ email });
+  if (!user) {
+    // Não revela que o e-mail não existe
+    return res
+      .status(200)
+      .json({ message: "Se o email existir, enviaremos as instruções." });
+  }
+
+  // Gera token de 32 bytes
+  const resetToken = crypto.randomBytes(32).toString("hex");
+
+  // Salva hash do token e data de expiração (1h)
+  user.resetPasswordToken = crypto
+    .createHash("sha256")
+    .update(resetToken)
+    .digest("hex");
+
+  user.resetPasswordExpires = Date.now() + 3600000; // 1 hora
+
+  await user.save();
+
+  const resetURL = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
+
+  console.log("RESET URL:", resetURL);
+
+  const mailOptions = {
+    from: process.env.EMAIL_TRANSPORTER,
+    to: email,
+    subject: "CriptoChat 2.0 — Recuperação de senha",
+    html: `
+      <h2>Redefinição de Senha</h2>
+      <p>Clique no link abaixo para redefinir sua senha:</p>
+      <p><a href="${resetURL}" target="_blank">${resetURL}</a></p>
+      <p>Este link expira em 1 hora.</p>
+    `,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    res.json({ message: "E-mail enviado." });
+  } catch (error) {
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
+
+    console.error(error);
+    res.status(500).json({ message: "Erro ao enviar e-mail." });
+  }
+});
+
+/**
+ * @desc Redefine senha, gera par RSA, recriptografa chave privada
+ * @route POST /api/user/reset-password/:token
+ * @access Public
+ */
+const resetPassword = asyncHandler(async (req, res) => {
+  const { password } = req.body;
+  const { token } = req.params;
+
+  if (!password) {
+    return res.status(400).json({ message: "Nova senha obrigatória." });
+  }
+
+  // Hash do token recebido
+  const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+
+  // Procura usuário por token válido
+  const user = await User.findOne({
+    resetPasswordToken: hashedToken,
+    resetPasswordExpires: { $gt: Date.now() },
+  });
+
+  if (!user) {
+    return res.status(400).json({ message: "Token inválido ou expirado." });
+  }
+
+  // 1️⃣ Atualiza senha
+  user.password = password;
+
+  // 2️⃣ Gera novo par RSA
+  const { privateKey, publicKey } = forge.pki.rsa.generateKeyPair(2048);
+
+  const privateKeyPem = forge.pki.privateKeyToPem(privateKey);
+  const publicKeyPem = forge.pki.publicKeyToPem(publicKey);
+
+  // 3️⃣ Criptografar chave privada usando a mesma lógica do cadastro
+  const salt = crypto.randomBytes(16);
+  const iv = crypto.randomBytes(12);
+
+  const keyMaterial = crypto.pbkdf2Sync(password, salt, 100000, 32, "sha256");
+
+  const cipher = crypto.createCipheriv("aes-256-gcm", keyMaterial, iv);
+  let encrypted = cipher.update(privateKeyPem, "utf8", "base64");
+  encrypted += cipher.final("base64");
+
+  const authTag = cipher.getAuthTag().toString("base64");
+
+  // 4️⃣ Atualizar chaves no DB
+  user.publicKey = publicKeyPem;
+
+  user.encryptedPrivateKey = encrypted;
+  user.encryptedPrivateKeyIV = iv.toString("base64");
+  user.encryptedPrivateKeySalt = salt.toString("base64");
+
+  // 5️⃣ Limpar token
+  user.resetPasswordToken = undefined;
+  user.resetPasswordExpires = undefined;
+
+  await user.save();
+
+  res.json({
+    message: "Senha redefinida com sucesso. Gere login novamente.",
+  });
+});
+
+
 module.exports = {
   allUsers,
   registerUser,
@@ -297,4 +425,6 @@ module.exports = {
   deleteUserProfile,
   sendVerificationOtp,
   updateEncryptedPrivateKey,
+  requestPasswordReset,
+  resetPassword,
 };
