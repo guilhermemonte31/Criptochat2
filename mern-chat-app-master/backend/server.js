@@ -1,16 +1,11 @@
-require("dotenv").config();
-
 const express = require("express");
-const https = require("https");
-const fs = require("fs");
-const path = require("path");
 const connectDB = require("./config/db");
-const { Server } = require("socket.io");
-
-// Rotas
 const userRoutes = require("./routes/userRoutes");
 const chatRoutes = require("./routes/chatRoutes");
 const messageRoutes = require("./routes/messageRoutes");
+const { notFound, errorHandler } = require("./middleware/errorMiddleware");
+const path = require("path");
+const text = "production";
 
 connectDB();
 const app = express();
@@ -19,58 +14,59 @@ const app = express();
 app.use(express.json({ charset: 'utf8' }));
 app.use(express.urlencoded({ extended: true, charset: 'utf8' }));
 
-// -------------------- Rotas principais --------------------
+// Definir charset nas respostas
+app.use((req, res, next) => {
+  res.charset = 'utf-8';
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  next();
+});
+
+app.use(express.json()); // to accept json data
+
+// app.get("/", (req, res) => {
+//   res.send("API Running!");
+// });
+
 app.use("/api/user", userRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/message", messageRoutes);
 
-// -------------------- Caminhos e build --------------------
-const __dirname1 = path.resolve(__dirname, "..");
-const buildPath = path.join(__dirname1, "frontend", "build");
+// --------------------------deployment------------------------------
 
-if (fs.existsSync(buildPath)) {
-  app.use(express.static(buildPath));
+const __dirname1 = path.resolve();
+
+if (text === "production") {
+  app.use(express.static(path.join(__dirname1, "/frontend/build")));
+
   app.get("*", (req, res) =>
-    res.sendFile(path.join(buildPath, "index.html"))
+    res.sendFile(path.resolve(__dirname1, "frontend", "build", "index.html"))
   );
 } else {
-  app.get("/", (req, res) => res.send("⚠️ Build do frontend não encontrado."));
+  app.get("/", (req, res) => {
+    res.send("API is running..");
+  });
 }
 
-// -------------------- Certificados HTTPS --------------------
-const certPath = path.join(__dirname, "certs");
-const keyFile = path.join(certPath, "key.pem");
-const certFile = path.join(certPath, "cert.pem");
+// --------------------------deployment------------------------------
 
-// Gera certificados automaticamente se não existirem
-if (!fs.existsSync(keyFile) || !fs.existsSync(certFile)) {
-  console.log("⚙️  Gerando certificados autoassinados...");
-  require("child_process").execSync("node certs/generateCert.js", { stdio: "inherit" });
-}
+// Error Handling middlewares
+app.use(notFound);
+app.use(errorHandler);
 
-const options = {
-  key: fs.readFileSync(keyFile),
-  cert: fs.readFileSync(certFile),
-};
+const PORT = 5000;
 
-// -------------------- Servidor --------------------
-const HTTPS_PORT = process.env.PORT || 5000;
+const server = app.listen(
+  PORT,
+  console.log(`Server running on PORT ${PORT}...`.yellow.bold)
+);
 
-// 🔒 Servidor HTTPS principal
-const httpsServer = https.createServer(options, app).listen(HTTPS_PORT, () => {
-  console.log(`🚀 Servidor HTTPS rodando em https://localhost:${HTTPS_PORT}`.green.bold);
-});
-
-// -------------------- Socket.IO --------------------
-const io = new Server(httpsServer, {
+const io = require("socket.io")(server, {
   pingTimeout: 60000,
   cors: {
-    origin: "*",
-    credentials: true,
+    origin: "http://localhost:3000",
+    // credentials: true,
   },
 });
-
-app.set("io", io);
 
 io.on("connection", (socket) => {
   console.log("Connected to socket.io");
