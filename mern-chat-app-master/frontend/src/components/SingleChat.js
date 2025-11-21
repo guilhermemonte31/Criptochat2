@@ -1,24 +1,30 @@
-import { FormControl } from "@chakra-ui/form-control";
+import { FormControl, FormLabel } from "@chakra-ui/form-control";
 import { Input } from "@chakra-ui/input";
-import { Box, Text } from "@chakra-ui/layout";
 import "./styles.css";
-import { IconButton, Spinner, useToast } from "@chakra-ui/react";
+import { Spinner, useToast, Button } from "@chakra-ui/react";
 import { getSender, getSenderFull } from "../config/ChatLogics";
 import { useEffect, useState } from "react";
-import { useHistory } from "react-router";
 import axios from "axios";
 import { ArrowBackIcon } from "@chakra-ui/icons";
 import ProfileModal from "./miscellaneous/ProfileModal";
 import ScrollableChat from "./ScrollableChat";
-import Lottie from "react-lottie";
-import animationData from "../animations/typing.json";
-import Cookies from "js-cookie";
 import io from "socket.io-client";
 import UpdateGroupChatModal from "./miscellaneous/UpdateGroupChatModal";
 import { ChatState } from "../Context/ChatProvider";
 import "./SingleChat.css";
 
-const ENDPOINT = "http://localhost:5000";
+import {
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalFooter,
+  ModalBody,
+  ModalCloseButton,
+  useDisclosure, // Hook para gerenciar o estado do modal
+} from "@chakra-ui/react";
+
+const ENDPOINT = "https://localhost:5000";
 var socket, selectedChatCompare;
 
 // FUNÇÕES DE SUPORTE PARA DECIFRAR A CHAVE PRIVADA SALVA
@@ -51,7 +57,7 @@ const deriveAesKeyForDecryption = async (password, salt, iterations, hash) => {
     false,
     ["decrypt"]
   );
-};
+}
 
 // Recuperando e decifrando a chave privada do sessionStorage
 const decryptStoredPrivateKey = async (password) => {
@@ -110,7 +116,6 @@ const encryptMessageForUser = async (message, publicKeyPem) => {
 
 const decryptMessage = async (encryptedB64, privateKey) => {
   try {
-    console.log("Tentando descriptografar mensagem...");
     const encryptedBytes = new Uint8Array(arrayBufferFromBase64(encryptedB64));
     const decrypted = await window.crypto.subtle.decrypt(
       { name: "RSA-OAEP" },
@@ -126,9 +131,9 @@ const decryptMessage = async (encryptedB64, privateKey) => {
   }
 };
 
-
-
 const SingleChat = ({ fetchAgain, setFetchAgain }) => {
+  const [show, setShow] = useState(false);
+  const handleClick = () => setShow(!show);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [newMessage, setNewMessage] = useState("");
@@ -136,19 +141,14 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   const [typing, setTyping] = useState(false);
   const [istyping, setIsTyping] = useState(false);
   const [privateKey, setPrivateKey] = useState(null);
+  const [isRotatingKeys, setIsRotatingKeys] = useState(false);
+  const [passwordVerification, setPasswordVerification] = useState("");
+  const [isVerifyingPass, setIsVerifyingPass] = useState(false); // Loading do botão de verificação
+  const { isOpen, onOpen, onClose } = useDisclosure();
 
   const toast = useToast();
 
-  const defaultOptions = {
-    loop: true,
-    autoplay: true,
-    animationData: animationData,
-    rendererSettings: {
-      preserveAspectRatio: "xMidYMid slice",
-    },
-  };
-
-  const { selectedChat, setSelectedChat, user, notification, setNotification } = ChatState();
+  const { selectedChat, setSelectedChat, user } = ChatState();
 
   useEffect(() => {
     (async () => {
@@ -242,6 +242,7 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
       if (!isRefresh) socket.emit("join chat", selectedChat._id);
 
       console.log("✅ Todas as mensagens processadas e exibidas no chat.");
+
     } catch (error) {
       console.error("❌ Erro ao buscar mensagens:", error);
       toast({
@@ -351,6 +352,179 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     }, timerLength);
   };
 
+  const handlePasswordVerification = async () => {
+    if (!passwordVerification) {
+      toast({
+        title: "Por favor, insira sua senha.",
+        status: "warning",
+        duration: 5000,
+        isClosable: true,
+        position: "bottom",
+      });
+      return;
+    }
+
+    setIsVerifyingPass(true);
+
+    try {
+      // Dados vindos do backend no login
+      const encryptedPrivateKey = {
+        cipher: user.encryptedPrivateKey,
+        iv: user.encryptedPrivateKeyIV,
+        salt: user.encryptedPrivateKeySalt,
+      };
+
+      // Tenta descriptografar com a senha digitada
+      const privateKey = await decryptPrivateKey(encryptedPrivateKey, passwordVerification);
+
+      if (!privateKey) throw new Error("Senha incorreta.");
+
+      // Senha confirmada → salva a chave privada atual no estado
+      setPrivateKey(privateKey);
+
+      // Fechar modal
+      onClose();
+
+      toast({
+        title: "Senha verificada!",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+        position: "bottom",
+      });
+
+      // Chama a rotação AGORA
+      await changeKeys(passwordVerification);
+
+    } catch (error) {
+      toast({
+        title: "Senha incorreta!",
+        description: "Não foi possível validar a senha.",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+        position: "bottom",
+      });
+    } finally {
+      setIsVerifyingPass(false);
+    }
+  };
+
+  const changeKeys = async (verifiedPassword) => {
+    const config = {
+      headers: { Authorization: `Bearer ${user.token}` },
+    };
+    await fetchMessages(true);
+
+    if (!privateKey) {
+      toast({
+        title: "Erro!",
+        description: "Chave privada atual não encontrada.",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+        position: "bottom",
+      });
+      return;
+    }
+    //console.log("Mudando chaves... ", oldPrivateKey);
+
+    // console.log("Parametros:", userName, userID, userToken);
+    setIsRotatingKeys(true);
+    const userInfos = JSON.parse(localStorage.getItem("userInfo"));
+    const userName = userInfos.name;
+    const userID = userInfos._id;
+    const oldPrivateKey = privateKey;
+
+    const newKeyPair = await window.crypto.subtle.generateKey(
+      {
+        name: "RSA-OAEP",
+        modulusLength: 2048,
+        publicExponent: new Uint8Array([1, 0, 1]),
+        hash: "SHA-256",
+      },
+      true,
+      ["encrypt", "decrypt"]
+    );
+
+    const spki = await window.crypto.subtle.exportKey("spki", newKeyPair.publicKey);
+    const publicB64 = arrayBufferToBase64(spki);
+    const newpublicPem = `-----BEGIN PUBLIC KEY-----\n${publicB64.match(/.{1,64}/g).join("\n")}\n-----END PUBLIC KEY-----`;
+    const pkcs8 = await window.crypto.subtle.exportKey("pkcs8", newKeyPair.privateKey);
+    const privateB64 = arrayBufferToBase64(pkcs8);
+    const newprivatePem = `-----BEGIN PRIVATE KEY-----\n${privateB64.match(/.{1,64}/g).join("\n")}\n-----END PRIVATE KEY-----`;
+    console.log("[DEBUG] Nova chave pública PEM:\n", newpublicPem);
+    console.log("[DEBUG] Nova chave privada PEM:\n", newprivatePem);
+    console.log("nova chave privada no formato cryptokey ", newKeyPair.privateKey);
+
+    const allMessagesParaUsuario = await axios.get(`/api/message/getmessages/${userID}`, config);
+
+    for(const mensagem of allMessagesParaUsuario.data){
+      console.log("Mensagem ",mensagem._id, " antes:" , mensagem.content);
+      const testeClear = await decryptMessage(mensagem.content, oldPrivateKey);
+      console.log("Mensagem ",mensagem._id, " depois de ser decifrada:", testeClear);
+      const clearEncrypted = await encryptMessageForUser(testeClear, newpublicPem);
+      console.log("Mensagem ",mensagem._id, " depois de ser recriptografada:", clearEncrypted);
+      
+      try{
+        const sendRecrypted = await axios.post("/api/message/editmessage",
+          {
+            msgID: mensagem._id,
+            content: clearEncrypted,
+          },
+          config);
+        console.log("Mensagem de id: ", mensagem._id, " recriptada com nova chave e salva no servidor. ", sendRecrypted);
+
+      }catch(e){
+        console.error("Erro ao recriptografar mensagem ", mensagem._id, ": ", e.message);
+      }
+    }
+
+    console.log("Todas mensagens para o usuario foram atualizadas com a nova chave.");
+
+    console.log("Atualizando chave publica PEM no banco...");
+
+    
+    //clearOldPrivateKeys(userName);
+    console.log("Atualizando chave privada no localstorage...");
+    const privateKeyBytes = await window.crypto.subtle.exportKey("pkcs8", newKeyPair.privateKey);
+    const encryptedPrivate = await encryptPrivateKey(privateKeyBytes, verifiedPassword);
+    localStorage.setItem(`${userName}_privateKey`, JSON.stringify(encryptedPrivate));
+    console.log("spfc testeeee ", encryptedPrivate.cipher, " iv:", encryptedPrivate.iv, " salt:", encryptedPrivate.salt);
+    try{
+        await axios.post("/api/user/rotatekeys", {
+          newPublicKey: newpublicPem,
+          encryptedPrivateKey: encryptedPrivate.cipher,
+          encryptedPrivateKeyIV: encryptedPrivate.iv,
+          encryptedPrivateKeySalt: encryptedPrivate.salt,
+
+        }, 
+        config);
+        console.log("Chave pública atualizada no servidor.");
+      }catch (e){
+        console.log("Erro na atualização da chave pública no servidor. ", e);
+      }
+    
+    setPasswordVerification("");
+    
+    console.log("atualizando chave privada no sessionstorage...");
+    const privateKeyJwk = await crypto.subtle.exportKey("jwk", newKeyPair.privateKey);
+    sessionStorage.setItem("privateKeyJwk", JSON.stringify(privateKeyJwk));
+
+    console.log("Atualizando chave privada no script...");
+    setPrivateKey(newKeyPair.privateKey);
+    toast({
+      title: "Sucesso!",
+      description: "Chaves rotacionadas com sucesso.",
+      status: "success",
+      duration: 5000,
+      isClosable: true,
+      position: "bottom",
+    });
+    console.log("Rotação de chaves concluída com sucesso!");
+    setIsRotatingKeys(false);
+  }
+
   return (
     <>
       {selectedChat ? (
@@ -371,17 +545,28 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
               </h2>
             </div>
             <div className="chat-header-actions">
-              {!selectedChat.isGroupChat ? (
-                <ProfileModal user={getSenderFull(user, selectedChat.users)}>
-                  <button className="header-icon-btn">
-                    <i className="fas fa-info-circle"></i>
-                  </button>
-                </ProfileModal>
-              ) : (
-                <UpdateGroupChatModal
-                  fetchMessages={fetchMessages}
-                  fetchAgain={fetchAgain}
-                  setFetchAgain={setFetchAgain}
+              <div style={{ display: 'flex', gap: '10px' }}>
+                {!selectedChat.isGroupChat ? (
+                  <ProfileModal user={getSenderFull(user, selectedChat.users)}>
+                    <button className="header-icon-btn">
+                      <i className="fas fa-info-circle"></i>
+                    </button>
+                  </ProfileModal>
+                ) : (
+                  <UpdateGroupChatModal
+                    fetchMessages={fetchMessages}
+                    fetchAgain={fetchAgain}
+                    setFetchAgain={setFetchAgain}
+                  >
+                    <button className="header-icon-btn">
+                      <i className="fas fa-cog"></i>
+                    </button>
+                  </UpdateGroupChatModal>
+                )}
+                <Button
+                  onClick={onOpen}
+                  size="sm"
+                  colorScheme="blue"
                 >
                   <button className="header-icon-btn">
                     <i className="fas fa-cog"></i>
@@ -442,6 +627,42 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
           </div>
         </div>
       )}
+
+      {/* === MODAL DE VERIFICAÇÃO DE EMAIL === */}
+      {/* Usando componentes Chakra UI, que você importou, para um modal */}
+      <Modal isOpen={isOpen} onClose={onClose} isCentered>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Verificação de Conta</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <p style={{ marginBottom: "15px" }}>
+              Por favor, insira sua senha novamente para confirmar a rotação de chaves.
+            </p>
+            <FormControl>
+              <FormLabel>Senha</FormLabel>
+              <Input
+                placeholder="Digite sua senha"
+                type={show ? "text" : "password"}
+                maxLength={20}
+                onChange={(e) => setPasswordVerification(e.target.value)}
+                value={passwordVerification}
+              />
+            </FormControl>
+          </ModalBody>
+
+          <ModalFooter>
+            <Button
+              colorScheme="blue"
+              isLoading={isVerifyingPass}
+              onClick={handlePasswordVerification}
+            >
+              Confirmar
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
     </>
   );
 };

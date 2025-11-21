@@ -8,6 +8,17 @@ import { useToast } from "@chakra-ui/react";
 import { useHistory } from "react-router-dom";
 import { ChatState } from "../../Context/ChatProvider";
 
+import {
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalCloseButton,
+  ModalBody,
+  ModalFooter
+} from "@chakra-ui/react";
+import { FormControl, FormLabel, Input, Button } from "@chakra-ui/react";
+
 // Função auxiliar para derivar a chave AES da senha
 async function deriveAesKey(password, salt) {
   const enc = new TextEncoder();
@@ -38,7 +49,6 @@ async function decryptPrivateKey(encryptedData, password) {
   const salt = Uint8Array.from(atob(encryptedData.salt), c => c.charCodeAt(0));
   const iv = Uint8Array.from(atob(encryptedData.iv), c => c.charCodeAt(0));
   const cipherBytes = Uint8Array.from(atob(encryptedData.cipher), c => c.charCodeAt(0));
-
   const aesKey = await deriveAesKey(password, salt);
   let decrypted;
   try {
@@ -73,6 +83,9 @@ const Login = () => {
   const [email, setEmail] = useState();
   const [password, setPassword] = useState();
   const [loading, setLoading] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [loadingReset, setLoadingReset] = useState(false);
 
   const history = useHistory();
   const { setUser } = ChatState();
@@ -170,8 +183,8 @@ const Login = () => {
       history.push("/chats");
       } catch (error) {
         toast({
-          title: "Error Occurred!",
-          description: error.response?.data?.message || "Login failed",
+          title: "Erro!",
+          description: error.response?.data?.message || "Login falhou. E-mail ou senha incorretos.",
           status: "error",
           duration: 5000,
           isClosable: true,
@@ -181,10 +194,43 @@ const Login = () => {
       }
     };
 
-  const handleGuestLogin = () => {
-    setEmail("guest@example.com");
-    setPassword("123456");
+  const handleForgotPassword = async () => {
+    if (!resetEmail) {
+      toast({
+        title: "Informe seu e-mail.",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+        position: "bottom",
+      });
+      return;
+    }
+
+    try {
+      await axios.post("/api/user/request-password-reset", { email: resetEmail });
+
+      toast({
+        title: "Verifique seu e-mail",
+        description: "Se houver uma conta com esse e-mail, enviaremos as instruções.",
+        status: "success",
+        duration: 5000,
+        isClosable: true,
+        position: "bottom",
+      });
+
+      setShowForgot(false);
+    } catch (e) {
+      toast({
+        title: "Erro",
+        description: "Falha ao solicitar redefinição.",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+        position: "bottom",
+      });
+    }
   };
+
   return (
     <>
       <div className="form-group">
@@ -218,6 +264,12 @@ const Login = () => {
         </div>
       </div>
 
+      <div className="forgot-password">
+        <span onClick={() => setShowForgot(true)}>
+          Esqueceu a senha?
+        </span>
+      </div>
+
       <button
         className="btn btn-primary"
         onClick={submitHandler}
@@ -226,6 +278,45 @@ const Login = () => {
         {loading && <span className="spinner"></span>}
         Login
       </button>
+
+      <Modal isOpen={showForgot} onClose={() => setShowForgot(false)} isCentered>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Redefinir senha</ModalHeader>
+          <ModalCloseButton />
+
+          <ModalBody>
+            <p style={{ marginBottom: "15px" }}>
+              Digite seu e-mail para enviarmos o link de redefinição de senha.
+            </p>
+
+            <FormControl>
+              <FormLabel>E-mail</FormLabel>
+              <Input
+                type="email"
+                placeholder="Digite seu e-mail"
+                value={resetEmail}
+                onChange={(e) => setResetEmail(e.target.value)}
+              />
+            </FormControl>
+          </ModalBody>
+
+          <ModalFooter>
+            <Button
+              colorScheme="blue"
+              mr={3}
+              isLoading={loadingReset}
+              onClick={handleForgotPassword}
+            >
+              Enviar
+            </Button>
+
+            <Button variant="ghost" onClick={() => setShowForgot(false)}>
+              Cancelar
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </>
   );
 };

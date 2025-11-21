@@ -1,17 +1,13 @@
 import { useState, useEffect } from "react";
-import { useHistory } from "react-router";
+import { useHistory, useLocation } from "react-router";
 import Login from "../components/Authentication/Login";
 import Signup from "../components/Authentication/Signup";
 import "./Homepage.css";
 
 function Homepage() {
   const history = useHistory();
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState("login");
-
-  useEffect(() => {
-    const user = JSON.parse(localStorage.getItem("userInfo") || "null");
-    if (user) history.push("/chats");
-  }, [history]);
 
   return (
     <div className="homepage-container">
