@@ -1,5 +1,5 @@
-import { createContext, useContext, useEffect, useState } from "react";
-import { useHistory, useLocation } from "react-router-dom";
+import React, { createContext, useContext, useEffect, useState } from "react";
+import { useHistory } from "react-router-dom";
 
 const ChatContext = createContext();
 
@@ -10,28 +10,17 @@ const ChatProvider = ({ children }) => {
   const [chats, setChats] = useState();
 
   const history = useHistory();
-  const location = useLocation();
-
-  // Rotas que NÃO exigem autenticação
-  const publicRoutes = [
-    "/reset-password",
-    "/forgot-password",
-    "/" // login é público também
-  ];
 
   useEffect(() => {
-    const userInfo = JSON.parse(localStorage.getItem("userInfo") || "null");
+    const userInfo = JSON.parse(localStorage.getItem("userInfo")  || "null");
     setUser(userInfo);
 
-    const isPublicRoute = publicRoutes.some(route =>
-      location.pathname.startsWith(route)
-    );
-
-    if (!userInfo && !isPublicRoute) {
-      console.log("No user, redirecting to login");
+    if (!userInfo) {
+      console.log("No user info found, redirecting to homepage"); 
       history.push("/");
     }
-  }, [history, location.pathname]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history]);
 
   return (
     <ChatContext.Provider
