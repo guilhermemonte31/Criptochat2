@@ -28,9 +28,6 @@ const userSchema = mongoose.Schema(
       default: false,
     },
     publicKey: { type: String, required: true },
-    encryptedPrivateKey: { type: String, required: true },
-    encryptedPrivateKeyIV: { type: String, required: true },
-    encryptedPrivateKeySalt: { type: String, required: true },
   },
   {
     timestamps: true,
