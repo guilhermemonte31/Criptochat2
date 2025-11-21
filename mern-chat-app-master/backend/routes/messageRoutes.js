@@ -2,8 +2,6 @@ const express = require("express");
 const {
   allMessages,
   sendMessage,
-  allMessagesDestinatario,
-  editedMessage
 } = require("../controllers/messageControllers");
 const { protect } = require("../middleware/authMiddleware");
 

@@ -35,24 +35,12 @@ const arrayBufferFromBase64 = (b64) => {
   return bytes.buffer;
 };
 
-const arrayBufferToBase64 = (buffer) => {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-
-  return btoa(binary);
-};
-
-
-const deriveAesKey = async (password, salt) => {
+const deriveAesKeyForDecryption = async (password, salt, iterations, hash) => {
   const enc = new TextEncoder();
-  const keyMaterial = await window.crypto.subtle.importKey(
+  const baseKey = await window.crypto.subtle.importKey(
     "raw",
     enc.encode(password),
-    { name: "PBKDF2" },
+    "PBKDF2",
     false,
     ["deriveKey"]
   );
@@ -61,65 +49,12 @@ const deriveAesKey = async (password, salt) => {
     {
       name: "PBKDF2",
       salt,
-      iterations: 100000,
-      hash: "SHA-256",
+      iterations,
+      hash,
     },
-    keyMaterial,
+    baseKey,
     { name: "AES-GCM", length: 256 },
     false,
-    ["encrypt", "decrypt"]
-  );
-};
-
-
-const encryptPrivateKey = async (privateKeyArrayBuffer, password) => {
-  const salt = window.crypto.getRandomValues(new Uint8Array(16));
-  const iv = window.crypto.getRandomValues(new Uint8Array(12));
-
-  const aesKey = await deriveAesKey(password, salt);
-  const encrypted = await window.crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    aesKey,
-    privateKeyArrayBuffer
-  );
-
-  return {
-    cipher: arrayBufferToBase64(encrypted),
-    iv: arrayBufferToBase64(iv.buffer),
-    salt: arrayBufferToBase64(salt.buffer),
-  };
-};
-
-
-async function decryptPrivateKey(encryptedData, password) {
-  console.log("decryptPrivateKey called with:", encryptedData, password);
-  const salt = Uint8Array.from(atob(encryptedData.salt), c => c.charCodeAt(0));
-  const iv = Uint8Array.from(atob(encryptedData.iv), c => c.charCodeAt(0));
-  const cipherBytes = Uint8Array.from(atob(encryptedData.cipher), c => c.charCodeAt(0));
-
-  const aesKey = await deriveAesKey(password, salt);
-  let decrypted;
-  try {
-    decrypted = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv },
-      aesKey,
-      cipherBytes
-    );
-    console.log("[abc] DECRYPTED PRIVATE KEY ARRAY BUFFER:", decrypted);
-  } catch (e) {
-    console.error("Decryption failed:", e);
-    throw e;
-  }
-
-  // Importa diretamente o ArrayBuffer descriptografado
-  return await crypto.subtle.importKey(
-    "pkcs8",
-    decrypted,
-    {
-      name: "RSA-OAEP",
-      hash: "SHA-256",
-    },
-    true,
     ["decrypt"]
   );
 }
@@ -127,7 +62,6 @@ async function decryptPrivateKey(encryptedData, password) {
 // Recuperando e decifrando a chave privada do sessionStorage
 const decryptStoredPrivateKey = async (password) => {
   try {
-    console.log("decryptStoredPrivateKey called with password:", password);
     const privateKeyJwkStr = sessionStorage.getItem("privateKeyJwk");
     if (!privateKeyJwkStr) {
       console.warn("Nenhuma chave privada encontrada na sessão.");
@@ -153,7 +87,6 @@ const decryptStoredPrivateKey = async (password) => {
 };
 
 const encryptMessageForUser = async (message, publicKeyPem) => {
-  console.log("xyz criptografando mensagem: ", message, " com chave: ", publicKeyPem);
   console.log("1 - Iniciando criptografia para destinatário...");
   console.log("Chave publica do destinatário:\n", publicKeyPem);
   const pemBody = publicKeyPem
@@ -190,10 +123,11 @@ const decryptMessage = async (encryptedB64, privateKey) => {
       encryptedBytes
     );
     const decoded = new TextDecoder().decode(decrypted);
+    console.log("✅ Mensagem descriptografada:", decoded);
     return decoded;
   } catch (err) {
-    console.error("❌ Falha na descriptografia:", err);
-    //return null;
+    console.warn("⚠️ Falha na descriptografia (mensagem não destinada a este usuário).");
+    return null;
   }
 };
 
@@ -218,7 +152,6 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
 
   useEffect(() => {
     (async () => {
-    console.log("useeffect");
       const key = await decryptStoredPrivateKey();
       if (key) setPrivateKey(key);
     })();
@@ -239,8 +172,6 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   const fetchMessages = async (isRefresh = false) => {
     if (!selectedChat || !privateKey) return;
     console.log(isRefresh ? "\n🔄 Atualizando mensagens..." : "\n=== BUSCANDO MENSAGENS CIFRADAS ===");
-    const testePrivKey = privateKey;
-    console.log("ssdfChave privada usada para decifrar mensagens: ", testePrivKey);
 
     try {
       const config = {
@@ -248,11 +179,12 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
       };
 
       const { data } = await axios.get(`/api/message/${selectedChat._id}`, config);
-     
+      console.log(`📦 ${data.length} mensagens recebidas do servidor.`);
 
       const decryptedMessages = [];
       for (const msg of data) {
-        
+        console.log("\nProcessando mensagem:", msg._id);
+
         // Evita processar mensagens que não são do chat atual
         if (!msg.destinatario || (!msg.sender && !msg.chat)) continue;
 
@@ -280,8 +212,6 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
         }
 
         const clear = await decryptMessage(msg.content, privateKey);
-
-        console.log(" clear: ", clear);
 
         decryptedMessages.push({
           ...msg,
@@ -364,7 +294,6 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
         const encryptedMessages = [];
         for (const member of chatInfo.users) {
           console.log(`🔐 Criptografando mensagem para ${member.email}...`);
-          console.log("[DEBUG] Chave pública do destinatário: ", member.publicKey);
           const encrypted = await encryptMessageForUser(newMessage, member.publicKey);
           encryptedMessages.push({
             destinatarioId: member._id,
@@ -639,9 +568,11 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
                   size="sm"
                   colorScheme="blue"
                 >
-                  Rotacionar Chaves
-                </Button>
-              </div>
+                  <button className="header-icon-btn">
+                    <i className="fas fa-cog"></i>
+                  </button>
+                </UpdateGroupChatModal>
+              )}
             </div>
           </div>
 

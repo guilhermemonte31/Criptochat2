@@ -1,3 +1,7 @@
+import { Button } from "@chakra-ui/button";
+import { FormControl, FormLabel } from "@chakra-ui/form-control";
+import { Input, InputGroup, InputRightElement } from "@chakra-ui/input";
+import { VStack } from "@chakra-ui/layout";
 import { useState } from "react";
 import axios from "axios";
 import { useToast } from "@chakra-ui/react";
@@ -42,8 +46,6 @@ async function deriveAesKey(password, salt) {
 
 // Função para descriptografar a chave privada armazenada
 async function decryptPrivateKey(encryptedData, password) {
-  
-  console.log("decryptPrivateKey called with:", encryptedData, password);
   const salt = Uint8Array.from(atob(encryptedData.salt), c => c.charCodeAt(0));
   const iv = Uint8Array.from(atob(encryptedData.iv), c => c.charCodeAt(0));
   const cipherBytes = Uint8Array.from(atob(encryptedData.cipher), c => c.charCodeAt(0));
@@ -92,7 +94,7 @@ const Login = () => {
     setLoading(true);
     if (!email || !password) {
       toast({
-        title: "Por favor, preencha todos os campos.",
+        title: "Please Fill all the Feilds",
         status: "warning",
         duration: 5000,
         isClosable: true,
@@ -115,33 +117,31 @@ const Login = () => {
         config
       );
 
-      let encryptedPrivateKeyJson = null;
-      let encryptedPrivateKey = null;
-
-      if (encryptedPrivateKeyJson) {
-        encryptedPrivateKey = JSON.parse(encryptedPrivateKeyJson);
-      } else {
-        // 2. Não existe localmente → usa o que vem do servidor
-        encryptedPrivateKey = {
-            cipher: data.encryptedPrivateKey,
-            iv: data.encryptedPrivateKeyIV,
-            salt: data.encryptedPrivateKeySalt,
-        };
-
-        // Opcional: salvar no localStorage como cache
-        localStorage.setItem(`${data.name}_privateKey`, JSON.stringify(encryptedPrivateKey));
+      const encryptedPrivateKeyJson = localStorage.getItem(`${data.name}_privateKey`);
+        if (!encryptedPrivateKeyJson) {
+          toast({
+          title: "Private Key Not Found",
+          description: "Please sign up again to generate encryption keys.",
+          status: "error",
+          duration: 8000,
+          isClosable: true,
+          position: "bottom",
+        });
+        setLoading(false);
+        return;
       }
+
+      const encryptedPrivateKey = JSON.parse(encryptedPrivateKeyJson);
 
       // Descriptografa a chave privada com a senha
       let privateKey;
       try {
         privateKey = await decryptPrivateKey(encryptedPrivateKey, password);
-        console.log("superteste: ", privateKey);
 
         const privateKeyJwk = await crypto.subtle.exportKey("jwk", privateKey);
 
         sessionStorage.setItem("privateKeyJwk", JSON.stringify(privateKeyJwk));
-        console.log("💾 Chave privada armazenada no SessionStorage.");
+        console.log("💾 Chave privada armazenada no sessionStorage.");
 
       } catch (e) {
         console.error("Decryption failed:", e);
@@ -156,16 +156,29 @@ const Login = () => {
         return;
       }
 
+      if (data.publicKey) {
+        const publicKey = await crypto.subtle.importKey(
+          "spki",
+          Uint8Array.from(atob(data.publicKey), c => c.charCodeAt(0)),
+          { name: "RSA-OAEP", hash: "SHA-256" },
+          true,
+          ["encrypt"]
+        );
+        setUser({ ...data, privateKey, publicKey });
+      }
+
       toast({
-        title: "Login bem sucedido!",
+        title: "Login Successful",
         status: "success",
         duration: 5000,
         isClosable: true,
         position: "bottom",
       });
+
       // Guarda o usuário e a chave descriptografada na memória
       setUser({ ...data, privateKey });
       localStorage.setItem("userInfo", JSON.stringify(data));
+      
       setLoading(false);
       history.push("/chats");
       } catch (error) {

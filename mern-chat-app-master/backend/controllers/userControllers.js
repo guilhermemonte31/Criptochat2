@@ -1,5 +1,3 @@
-require('dotenv').config();
-
 const asyncHandler = require("express-async-handler");
 const User = require("../models/userModel");
 const generateToken = require("../config/generateToken");
@@ -41,9 +39,7 @@ const allUsers = asyncHandler(async (req, res) => {
 //@route           POST /api/user/
 //@access          Public
 const registerUser = asyncHandler(async (req, res) => {
-  const { name, email, password, pic, publicKey, 
-          encryptedPrivateKey, encryptedPrivateKeyIV, 
-          encryptedPrivateKeySalt} = req.body;
+  const { name, email, password, pic, publicKey } = req.body;
 
   if (!name || !email || !password) {
     res.status(400);
@@ -63,9 +59,6 @@ const registerUser = asyncHandler(async (req, res) => {
     password,
     pic,
     publicKey,
-    encryptedPrivateKey,
-    encryptedPrivateKeyIV,
-    encryptedPrivateKeySalt,
   });
 
   if (user) {
@@ -73,8 +66,6 @@ const registerUser = asyncHandler(async (req, res) => {
       _id: user._id,
       name: user.name,
       email: user.email,
-      password: user.password,
-      publicKey: user.publicKey,
       isAdmin: user.isAdmin,
       pic: user.pic,
       token: generateToken(user._id),
@@ -82,27 +73,6 @@ const registerUser = asyncHandler(async (req, res) => {
   } else {
     res.status(400);
     throw new Error("User not found");
-  }
-});
-
-const updatePublicKey = asyncHandler(async (req, res) => {
-  const userId = req.user._id;
-  const { newPublicKey, encryptedPrivateKey, encryptedPrivateKeyIV, encryptedPrivateKeySalt } = req.body;
-  console.log("spfc testeeee: ", newPublicKey, " cypher:", encryptedPrivateKey, " iv:", encryptedPrivateKeyIV, " salt:", encryptedPrivateKeySalt);
-  console.log("[DEBUG] Rota de rotação de chaves acessada ", userId, newPublicKey);
-
-  const user = await User.findById(userId);
-  if (user) {
-    user.publicKey = newPublicKey;
-    user.encryptedPrivateKey = encryptedPrivateKey;
-    user.encryptedPrivateKeyIV = encryptedPrivateKeyIV;
-    user.encryptedPrivateKeySalt = encryptedPrivateKeySalt;   
-    
-    await user.save();
-    res.json({ message: "Chave pública atualizada com sucesso" });
-  } else {
-    res.status(404);
-    throw new Error("Usuário não encontrado");
   }
 });
 
@@ -119,11 +89,6 @@ const authUser = asyncHandler(async (req, res) => {
       _id: user._id,
       name: user.name,
       email: user.email,
-      password: user.password,
-      publicKey: user.publicKey,
-      encryptedPrivateKey: user.encryptedPrivateKey,
-      encryptedPrivateKeyIV: user.encryptedPrivateKeyIV,
-      encryptedPrivateKeySalt: user.encryptedPrivateKeySalt,
       isAdmin: user.isAdmin,
       pic: user.pic,
       token: generateToken(user._id),
@@ -145,8 +110,6 @@ const getUserProfile = asyncHandler(async (req, res) => {
       _id: user._id,
       name: user.name,
       email: user.email,
-      password: user.password,
-      publicKey: user.publicKey,
       pic: user.pic,
       isAdmin: user.isAdmin,
     });
@@ -438,7 +401,6 @@ module.exports = {
   allUsers,
   registerUser,
   authUser,
-  updatePublicKey,
   getUserProfile,
   updateUserProfile,
   deleteUserProfile,

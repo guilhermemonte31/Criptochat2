@@ -1,7 +1,6 @@
 const express = require("express");
 const {
   registerUser,
-  updatePublicKey,
   authUser,
   allUsers,
   updateUserProfile,
