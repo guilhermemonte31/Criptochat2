@@ -24,7 +24,7 @@ import {
   useDisclosure, // Hook para gerenciar o estado do modal
 } from "@chakra-ui/react";
 
-const ENDPOINT = "https://localhost:5000";
+const ENDPOINT = "http://localhost:3000";
 var socket, selectedChatCompare;
 
 // FUNÇÕES DE SUPORTE PARA DECIFRAR A CHAVE PRIVADA SALVA
