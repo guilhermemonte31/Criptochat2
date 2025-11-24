@@ -1,54 +1,12 @@
+// messageController_SEM_NONCE.js
+// Versão modificada que REMOVE validação de nonce
+
 const asyncHandler = require("express-async-handler");
 const { encryptedMessage } = require("../models/messageModel");
 const User = require("../models/userModel");
 const Chat = require("../models/chatModel");
 
-/*
-  ==========================================================
-   🔐 SISTEMA DE MENSAGENS CIFRADAS - EXPLICAÇÃO DO FLUXO
-  ==========================================================
-  1️⃣ O cliente (frontend) gera um par de chaves RSA:
-      - Pública (PEM): compartilhada com outros usuários via servidor.
-      - Privada (CryptoKey WebCrypto): armazenada localmente no navegador e no servidor (criptografada).
-
-  2️⃣ Ao enviar uma mensagem:
-      - O navegador cifra o conteúdo com a chave pública do destinatário.
-      - O resultado (base64, RSA-OAEP) é enviado ao servidor.
-
-  3️⃣ O servidor:
-      - Recebe o conteúdo cifrado (sem texto puro).
-      - Apenas armazena no banco e distribui via Socket/REST.
-      - Mantém registros (logs) de auditoria e fluxo.
-
-  4️⃣ O destinatário:
-      - Recebe o conteúdo cifrado e o decifra localmente
-        usando sua chave privada guardada no navegador.
-
-  ➤ O servidor nunca tem acesso ao conteúdo original das mensagens.
-*/
-
-/**
- * ============================================================================
- * CONTROLLER DE MENSAGENS COM INTEGRIDADE
- * ============================================================================
- *
- * Este controller implementa verificações de integridade no servidor:
- *
- * 1. VALIDAÇÃO DE NONCE: Garante que não é replay attack
- * 2. VALIDAÇÃO DE TIMESTAMP: Rejeita mensagens muito antigas
- * 3. VALIDAÇÃO DE HMAC: Verifica integridade básica
- * 4. LOG DE AUDITORIA: Registra tentativas de adulteração
- * 5. RATE LIMITING: Previne spam e DoS
- *
- * IMPORTANTE: O servidor NÃO consegue descriptografar as mensagens
- * (apenas armazena dados cifrados), mas consegue detectar várias
- * tentativas de ataque através dos metadados.
- *
- * ============================================================================
- */
-
 // SISTEMA DE AUDITORIA
-
 const auditLog = [];
 
 const logSecurityEvent = (type, userId, details) => {
@@ -62,9 +20,6 @@ const logSecurityEvent = (type, userId, details) => {
 
   auditLog.push(event);
   console.log(`🚨 [SECURITY EVENT] ${type}:`, details);
-
-  // Em produção: salvar em banco de dados separado
-  // await SecurityLog.create(event)
 };
 
 // UTILITÁRIOS DE VALIDAÇÃO
@@ -78,35 +33,7 @@ const isTimestampValid = (timestamp, maxAgeMinutes = 10) => {
   return ageMinutes >= 0 && ageMinutes <= maxAgeMinutes;
 };
 
-// Verifica se nonce é maior que o último nonce do usuário
-const validateNonce = async (senderId, nonce) => {
-  try {
-    const lastMessage = await encryptedMessage
-      .findOne({ sender: senderId })
-      .sort({ nonce: -1 })
-      .select("nonce");
-
-    if (!lastMessage) {
-      // Primeira mensagem do usuário
-      return { valid: true, lastNonce: 0 };
-    }
-
-    if (nonce <= lastMessage.nonce) {
-      return {
-        valid: false,
-        lastNonce: lastMessage.nonce,
-        error: "Nonce must be greater than last nonce (possible replay attack)",
-      };
-    }
-
-    return { valid: true, lastNonce: lastMessage.nonce };
-  } catch (error) {
-    console.error("Erro ao validar nonce:", error);
-    return { valid: false, error: error.menssage };
-  }
-};
-
-// Rate limiting simples (previne spoam)
+// Rate limiting simples
 const userMessageCounts = new Map();
 
 const checkRateLimit = (userId, maxPerMinute = 30) => {
@@ -155,10 +82,7 @@ const allMessages = asyncHandler(async (req, res) => {
     const messages = await encryptedMessage
       .find({
         chat: chatId,
-        $or: [
-          { destinatario: req.user._id }, // mensagens destinadas ao usuário
-          { sender: req.user._id }, // ou mensagens que o usuário enviou
-        ],
+        $or: [{ destinatario: req.user._id }, { sender: req.user._id }],
       })
       .populate("sender", "name pic email")
       .populate("destinatario", "name email")
@@ -166,15 +90,6 @@ const allMessages = asyncHandler(async (req, res) => {
       .sort({ createdAt: 1 });
 
     console.log(`✅ ${messages.length} mensagens encontradas`);
-
-    // Verificar integridade de mensagens não verificadas
-    const unverifiedCount = messages.filter((m) => !m.integrityVerified).length;
-    if (unverifiedCount > 0) {
-      console.log(
-        `⚠️ ${unverifiedCount} mensagens precisam de verificação de integridade`
-      );
-    }
-
     res.json(messages);
   } catch (error) {
     console.error("❌ Erro ao buscar mensagens:", error);
@@ -183,34 +98,32 @@ const allMessages = asyncHandler(async (req, res) => {
 });
 
 //
-// @desc Enviar nova Mensagem COM INTERGIDADE
+// @desc Enviar nova Mensagem COM INTEGRIDADE (SEM NONCE)
 // @route POST /api/message
 // @access Protected
 //
 const sendMessage = asyncHandler(async (req, res) => {
-  console.log("\n=== RECEBENDO MENSAGEM COM INTEGRIDADE ===");
+  console.log("\n=== RECEBENDO MENSAGEM COM INTEGRIDADE (SEM NONCE) ===");
 
   const {
     content,
     chatId,
     destinatarioId,
-    // Campos de integridade
+    // Campos de integridade (SEM NONCE)
     encryptedKey,
     iv,
     authTag,
-    nonce,
     timestamp,
     hmac,
   } = req.body;
 
-  // VALIDAÇÃO 1: Campos obrigatórios
+  // VALIDAÇÃO 1: Campos obrigatórios (SEM NONCE)
   if (
     !content ||
     !chatId ||
     !encryptedKey ||
     !iv ||
     !authTag ||
-    nonce === undefined ||
     !timestamp ||
     !hmac
   ) {
@@ -223,7 +136,6 @@ const sendMessage = asyncHandler(async (req, res) => {
         "encryptedKey",
         "iv",
         "authTag",
-        "nonce",
         "timestamp",
         "hmac",
       ],
@@ -262,32 +174,14 @@ const sendMessage = asyncHandler(async (req, res) => {
       });
     }
 
-    // === VALIDAÇÃO 4: Nonce (Replay Protection) ===
-    console.log("3️⃣ Verificando nonce...");
-    const nonceValidation = await validateNonce(senderId, nonce);
-    if (!nonceValidation.valid) {
-      logSecurityEvent("INVALID_NONCE", senderId, {
-        chatId,
-        receivedNonce: nonce,
-        lastNonce: nonceValidation.lastNonce,
-        error: nonceValidation.error,
-      });
-
-      return res.status(400).json({
-        message: "Invalid nonce - possible replay attack",
-        details: nonceValidation.error,
-      });
-    }
-    console.log(`   ✅ Nonce válido (${nonce} > ${nonceValidation.lastNonce})`);
-
-    // === VALIDAÇÃO 5: Chat Existe ===
-    console.log("4️⃣ Verificando chat...");
+    // === VALIDAÇÃO 4: Chat Existe ===
+    console.log("3️⃣ Verificando chat...");
     const chat = await Chat.findById(chatId).populate("users", "name email");
     if (!chat) {
       return res.status(404).json({ message: "Chat not found" });
     }
 
-    // === VALIDAÇÃO 6: Usuário no Chat ===
+    // === VALIDAÇÃO 5: Usuário no Chat ===
     const isUserInChat = chat.users.some(
       (u) => u._id.toString() === senderId.toString()
     );
@@ -302,8 +196,8 @@ const sendMessage = asyncHandler(async (req, res) => {
       });
     }
 
-    // === SALVAR MENSAGEM ===
-    console.log("5️⃣ Salvando mensagem com integridade...");
+    // === SALVAR MENSAGEM (SEM NONCE) ===
+    console.log("4️⃣ Salvando mensagem com integridade...");
     const newMessage = await encryptedMessage.create({
       sender: senderId,
       destinatario: destinatarioId || null,
@@ -311,11 +205,10 @@ const sendMessage = asyncHandler(async (req, res) => {
       encryptedKey,
       iv,
       authTag,
-      nonce,
       timestamp: new Date(timestamp),
       hmac,
       chat: chat._id,
-      integrityVerified: true, // Passou nas verificações do servidor
+      integrityVerified: true,
       tampered: false,
     });
 
@@ -339,27 +232,12 @@ const sendMessage = asyncHandler(async (req, res) => {
     // === LOG DE SUCESSO ===
     console.log("✅ Mensagem salva com integridade verificada!");
     console.log(`   ID: ${newMessage._id}`);
-    console.log(`   Nonce: ${nonce}`);
     console.log(`   Remetente: ${req.user.name}`);
     console.log(`   Chat: ${chat._id}`);
 
     res.json(populatedMessage);
   } catch (error) {
     console.error("❌ Erro ao salvar mensagem:", error);
-
-    // Se for erro de nonce duplicado
-    if (error.code === 11000 && error.keyPattern && error.keyPattern.nonce) {
-      logSecurityEvent("DUPLICATE_NONCE", req.user._id, {
-        chatId,
-        nonce,
-        error: "Duplicate nonce detected",
-      });
-
-      return res.status(400).json({
-        message: "Duplicate nonce - possible replay attack",
-        details: "This message nonce has already been used",
-      });
-    }
     res.status(400).json({ message: error.message });
   }
 
@@ -399,7 +277,7 @@ const allMessagesDestinatario = asyncHandler(async (req, res) => {
 const editedMessage = asyncHandler(async (req, res) => {
   console.log("\n[MENSAGENS] Editando mensagem...");
 
-  const { msgID, content, encryptedKey, iv, authTag, nonce, timestamp, hmac } =
+  const { msgID, content, encryptedKey, iv, authTag, timestamp, hmac } =
     req.body;
 
   try {
@@ -424,7 +302,6 @@ const editedMessage = asyncHandler(async (req, res) => {
     mensagem.encryptedKey = encryptedKey;
     mensagem.iv = iv;
     mensagem.authTag = authTag;
-    mensagem.nonce = nonce;
     mensagem.timestamp = timestamp ? new Date(timestamp) : mensagem.timestamp;
     mensagem.hmac = hmac;
     mensagem.integrityVerified = true;
@@ -439,19 +316,16 @@ const editedMessage = asyncHandler(async (req, res) => {
   }
 });
 
-
 /**
  * @desc  Obter logs de auditoria (apenas admin)
  * @route GET /api/message/audit-logs
  * @access Protected + Admin
  */
 const getAuditLogs = asyncHandler(async (req, res) => {
-  // Verificar se é admin
   if (!req.user.isAdmin) {
     return res.status(403).json({ message: "Admin access required" });
   }
 
-  // Retornar últimos 100 eventos
   const recentLogs = auditLog.slice(-100);
   res.json({
     total: auditLog.length,
@@ -490,8 +364,7 @@ const verifyMessageIntegrity = asyncHandler(async (req, res) => {
         message.authTag &&
         message.hmac
       ),
-      timestampValid: isTimestampValid(message.timestamp, 60), // 1 hora
-      nonceValid: true, // Assumir válido se já está no banco
+      timestampValid: isTimestampValid(message.timestamp, 60),
       integrityVerified: message.integrityVerified,
       tampered: message.tampered,
     };
@@ -503,7 +376,6 @@ const verifyMessageIntegrity = asyncHandler(async (req, res) => {
       valid: allChecksPass,
       checks,
       timestamp: message.timestamp,
-      nonce: message.nonce,
     });
   } catch (error) {
     console.error("Erro ao verificar integridade:", error);

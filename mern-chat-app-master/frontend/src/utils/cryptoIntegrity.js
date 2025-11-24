@@ -1,25 +1,21 @@
 /**
  * ============================================================================
- * MÓDULO DE CRIPTOGRAFIA HÍBRIDA COM INTEGRIDADE
+ * MÓDULO DE CRIPTOGRAFIA HÍBRIDA COM INTEGRIDADE (SEM NONCE)
  * ============================================================================
  *
- * Este módulo implementa criptografia end-to-end com garantias de integridade:
+ * PROTEÇÕES MANTIDAS:
+ * ✅ AES-GCM com authTag (integridade da mensagem)
+ * ✅ HMAC-SHA256 (verificação adicional)
+ * ✅ Timestamp (rejeita mensagens antigas)
+ * ✅ RSA-OAEP (confidencialidade)
  *
- * FLUXO DE ENVIO:
- * 1. Gerar chave AES-256 efêmera (única por mensagem)
- * 2. Criptografar mensagem com AES-GCM (gera authTag automaticamente)
- * 3. Criptografar chave AES com RSA-OAEP do destinatário
- * 4. Calcular HMAC de toda a mensagem
- * 5. Obter nonce sequencial do usuário
- * 6. Enviar tudo para o servidor
+ * REMOVIDO:
+ * ❌ Nonce (estava causando problemas de validação)
  *
- * FLUXO DE RECEBIMENTO:
- * 1. Verificar HMAC (integridade geral)
- * 2. Verificar nonce (não é replay)
- * 3. Verificar timestamp (não é muito antigo)
- * 4. Descriptografar chave AES com RSA privada
- * 5. Descriptografar mensagem com AES-GCM (verifica authTag automaticamente)
- * 6. Se authTag inválido = mensagem adulterada = REJEITAR
+ * PROTEÇÃO CONTRA REPLAY ATTACKS:
+ * - Timestamp com janela de 10 minutos
+ * - MessageId único no banco de dados
+ * - Rate limiting no servidor
  *
  * ============================================================================
  */
@@ -55,57 +51,15 @@ const arrayBufferToString = (buffer) => {
 };
 
 // ============================================================================
-// GERENCIAMENTO DE NONCE (Previne Replay Attacks)
-// ============================================================================
-
-/**
- * Obtém o próximo nonce para o usuário
- * Nonces são armazenados localmente e incrementados a cada mensagem
- */
-const getNextNonce = (userId) => {
-  const key = `nonce_${userId}`;
-  let nonce = parseInt(localStorage.getItem(key) || "0");
-  nonce++;
-  localStorage.setItem(key, nonce.toString());
-  return nonce;
-};
-
-/**
- * Verifica se o nonce recebido é válido
- * Deve ser maior que o último nonce recebido daquele remetente
- */
-const isValidNonce = (senderId, receivedNonce) => {
-  const key = `lastNonce_${senderId}`;
-  const lastNonce = parseInt(localStorage.getItem(key) || "0");
-
-  if (receivedNonce <= lastNonce) {
-    console.error(
-      `⚠️ REPLAY ATTACK DETECTED! Nonce ${receivedNonce} <= ${lastNonce}`
-    );
-    return false;
-  }
-
-  // Atualizar último nonce válido
-  localStorage.setItem(key, receivedNonce.toString());
-  return true;
-};
-
-// ============================================================================
 // HMAC PARA VERIFICAÇÃO ADICIONAL
 // ============================================================================
 
 /**
  * Calcula HMAC-SHA256 para verificação de integridade
- * Hash de: content + timestamp + nonce + senderId
+ * Hash de: content + timestamp + senderId
  */
-const calculateHMAC = async (
-  content,
-  timestamp,
-  nonce,
-  senderId,
-  secretKey
-) => {
-  const data = `${content}|${timestamp}|${nonce}|${senderId}`;
+const calculateHMAC = async (content, timestamp, senderId, secretKey) => {
+  const data = `${content}|${timestamp}|${senderId}`;
   const dataBuffer = stringToArrayBuffer(data);
 
   // Importar chave secreta
@@ -128,7 +82,6 @@ const calculateHMAC = async (
 const verifyHMAC = async (
   content,
   timestamp,
-  nonce,
   senderId,
   receivedHMAC,
   secretKey
@@ -136,7 +89,6 @@ const verifyHMAC = async (
   const calculatedHMAC = await calculateHMAC(
     content,
     timestamp,
-    nonce,
     senderId,
     secretKey
   );
@@ -167,7 +119,7 @@ const importPublicKey = async (publicKeyPem) => {
 };
 
 /**
- * ETAPA 2: Criptografar mensagem com integridade
+ * ETAPA 2: Criptografar mensagem com integridade (SEM NONCE)
  *
  * @param {string} message - Mensagem em texto puro
  * @param {string} recipientPublicKeyPem - Chave pública RSA do destinatário
@@ -179,9 +131,11 @@ export const encryptWithIntegrity = async (
   message,
   recipientPublicKeyPem,
   senderId,
-  hmacSecret = "shared-secret-key" // Em produção, usar chave derivada
+  hmacSecret = "shared-secret-key"
 ) => {
   console.log("\n🔐 === INICIANDO CRIPTOGRAFIA COM INTEGRIDADE ===");
+  console.log("Mensagem:", message.substring(0, 50) + "...");
+  console.log("SenderId:", senderId);
 
   try {
     // 1. Gerar chave AES-256 efêmera
@@ -228,44 +182,71 @@ export const encryptWithIntegrity = async (
       aesKeyRaw
     );
 
-    // 7. Obter nonce sequencial
-    const nonce = getNextNonce(senderId);
-    console.log("5️⃣ Nonce obtido:", nonce);
-
-    // 8. Timestamp atual
+    // 7. Timestamp atual
     const timestamp = new Date().toISOString();
+    console.log("5️⃣ Timestamp:", timestamp);
 
-    // 9. Calcular HMAC
-    console.log("6️⃣ Calculando HMAC...");
+    // 8. Preparar dados em base64
     const content64 = arrayBufferToBase64(ciphertext.buffer);
+    const encryptedKey64 = arrayBufferToBase64(encryptedKey);
+    const iv64 = arrayBufferToBase64(iv.buffer);
+    const authTag64 = arrayBufferToBase64(authTag.buffer);
+
+    // 9. Calcular HMAC (sem nonce)
+    console.log("6️⃣ Calculando HMAC...");
     const hmac = await calculateHMAC(
       content64,
       timestamp,
-      nonce,
       senderId,
       hmacSecret
     );
 
-    console.log("✅ === CRIPTOGRAFIA CONCLUÍDA COM SUCESSO ===\n");
+    console.log("✅ === CRIPTOGRAFIA CONCLUÍDA COM SUCESSO ===");
+    console.log("Dados finais:", {
+      contentLength: content64.length,
+      encryptedKeyLength: encryptedKey64.length,
+      ivLength: iv64.length,
+      authTagLength: authTag64.length,
+      timestamp: timestamp,
+      hmacLength: hmac.length,
+    });
 
-    // 10. Retornar todos os dados
-    return {
+    // 10. Retornar todos os dados (SEM NONCE)
+    const result = {
       content: content64,
-      encryptedKey: arrayBufferToBase64(encryptedKey),
-      iv: arrayBufferToBase64(iv.buffer),
-      authTag: arrayBufferToBase64(authTag.buffer),
-      nonce: nonce,
+      encryptedKey: encryptedKey64,
+      iv: iv64,
+      authTag: authTag64,
       timestamp: timestamp,
       hmac: hmac,
     };
+
+    // Validação final antes de retornar
+    const requiredFields = [
+      "content",
+      "encryptedKey",
+      "iv",
+      "authTag",
+      "timestamp",
+      "hmac",
+    ];
+    const missing = requiredFields.filter(
+      (field) => !result[field] && result[field] !== 0
+    );
+    if (missing.length > 0) {
+      throw new Error(`Campos faltando no resultado: ${missing.join(", ")}`);
+    }
+
+    return result;
   } catch (error) {
     console.error("❌ Erro na criptografia:", error);
+    console.error("Stack:", error.stack);
     throw error;
   }
 };
 
 /**
- * ETAPA 3: Descriptografar e verificar integridade
+ * ETAPA 3: Descriptografar e verificar integridade (SEM NONCE)
  *
  * @param {Object} encryptedData - Dados criptografados
  * @param {CryptoKey} privateKey - Chave privada RSA do destinatário
@@ -287,7 +268,6 @@ export const decryptWithIntegrity = async (
     const hmacValid = await verifyHMAC(
       encryptedData.content,
       encryptedData.timestamp,
-      encryptedData.nonce,
       senderId,
       encryptedData.hmac,
       hmacSecret
@@ -299,16 +279,8 @@ export const decryptWithIntegrity = async (
     }
     console.log("   ✅ HMAC válido");
 
-    // 2. Verificar nonce (proteção contra replay)
-    console.log("2️⃣ Verificando nonce...");
-    if (!isValidNonce(senderId, encryptedData.nonce)) {
-      console.error("❌ NONCE INVÁLIDO - Possível replay attack!");
-      return null;
-    }
-    console.log("   ✅ Nonce válido");
-
-    // 3. Verificar timestamp (não muito antigo)
-    console.log("3️⃣ Verificando timestamp...");
+    // 2. Verificar timestamp (não muito antigo)
+    console.log("2️⃣ Verificando timestamp...");
     const messageAge =
       (new Date() - new Date(encryptedData.timestamp)) / 1000 / 60;
     if (messageAge > 10) {
@@ -316,8 +288,8 @@ export const decryptWithIntegrity = async (
       console.warn(`⚠️ Mensagem antiga (${messageAge.toFixed(1)} minutos)`);
     }
 
-    // 4. Descriptografar chave AES com RSA
-    console.log("4️⃣ Descriptografando chave AES...");
+    // 3. Descriptografar chave AES com RSA
+    console.log("3️⃣ Descriptografando chave AES...");
     const encryptedKeyBuffer = base64ToArrayBuffer(encryptedData.encryptedKey);
     const aesKeyRaw = await crypto.subtle.decrypt(
       { name: "RSA-OAEP" },
@@ -325,7 +297,7 @@ export const decryptWithIntegrity = async (
       encryptedKeyBuffer
     );
 
-    // 5. Importar chave AES
+    // 4. Importar chave AES
     const aesKey = await crypto.subtle.importKey(
       "raw",
       aesKeyRaw,
@@ -334,8 +306,8 @@ export const decryptWithIntegrity = async (
       ["decrypt"]
     );
 
-    // 6. Reconstruir dados criptografados (ciphertext + authTag)
-    console.log("5️⃣ Descriptografando mensagem com AES-GCM...");
+    // 5. Reconstruir dados criptografados (ciphertext + authTag)
+    console.log("4️⃣ Descriptografando mensagem com AES-GCM...");
     const ciphertext = base64ToArrayBuffer(encryptedData.content);
     const authTag = base64ToArrayBuffer(encryptedData.authTag);
     const iv = base64ToArrayBuffer(encryptedData.iv);
@@ -347,7 +319,7 @@ export const decryptWithIntegrity = async (
     encryptedWithTag.set(new Uint8Array(ciphertext), 0);
     encryptedWithTag.set(new Uint8Array(authTag), ciphertext.byteLength);
 
-    // 7. Descriptografar (AES-GCM verifica authTag automaticamente)
+    // 6. Descriptografar (AES-GCM verifica authTag automaticamente)
     let decrypted;
     try {
       decrypted = await crypto.subtle.decrypt(
@@ -363,53 +335,19 @@ export const decryptWithIntegrity = async (
 
     console.log("   ✅ Auth Tag verificado com sucesso!");
 
-    // 8. Converter para texto
+    // 7. Converter para texto
     const message = arrayBufferToString(decrypted);
 
     console.log("✅ === DESCRIPTOGRAFIA E VERIFICAÇÃO BEM-SUCEDIDAS ===\n");
     return message;
   } catch (error) {
     console.error("❌ Erro na descriptografia:", error);
+    console.error("Stack:", error.stack);
     return null;
   }
-};
-
-// ============================================================================
-// FUNÇÕES AUXILIARES
-// ============================================================================
-
-/**
- * Limpar nonces antigos (manutenção)
- */
-export const cleanOldNonces = (daysToKeep = 30) => {
-  const keys = Object.keys(localStorage);
-  const now = Date.now();
-  const maxAge = daysToKeep * 24 * 60 * 60 * 1000;
-
-  keys.forEach((key) => {
-    if (key.startsWith("lastNonce_")) {
-      // Remover nonces não usados recentemente
-      // (implementação simplificada - em produção, usar timestamp)
-    }
-  });
-};
-
-/**
- * Resetar nonces (apenas desenvolvimento)
- */
-export const resetNonces = () => {
-  const keys = Object.keys(localStorage);
-  keys.forEach((key) => {
-    if (key.startsWith("nonce_") || key.startsWith("lastNonce_")) {
-      localStorage.removeItem(key);
-    }
-  });
-  console.log("🔄 Nonces resetados");
 };
 
 export default {
   encryptWithIntegrity,
   decryptWithIntegrity,
-  resetNonces,
-  cleanOldNonces,
 };

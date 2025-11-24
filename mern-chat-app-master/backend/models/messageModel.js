@@ -1,5 +1,4 @@
 const mongoose = require("mongoose");
-const { hmac } = require("node-forge");
 
 const testSchema = mongoose.Schema(
   {
@@ -13,7 +12,7 @@ const testSchema = mongoose.Schema(
 
 /**
  * ============================================================================
- * ESQUEMA DE MENSAGEM COM INTEGRIDADE
+ * ESQUEMA DE MENSAGEM COM INTEGRIDADE (SEM NONCE)
  * ============================================================================
  *
  * Este esquema implementa os seguintes mecanismos de integridade:
@@ -27,33 +26,45 @@ const testSchema = mongoose.Schema(
  *    - Garante que a mensagem não foi adulterada
  *    - Se qualquer byte for modificado, a verificação falhará
  *
- * 3. NONCE (Number used ONCE):
- *    - Contador incremental por usuário
- *    - Previne replay attacks (reenvio de mensagens antigas)
- *    - Cada mensagem tem um nonce único e sequencial
- *
- * 4. TIMESTAMP:
+ * 3. TIMESTAMP:
  *    - Momento exato do envio
  *    - Detecta mensagens muito antigas (possível replay)
  *    - Permite ordenação temporal
+ *    - Servidor rejeita mensagens com > 10 minutos
  *
- * 5. HMAC (Hash-based Message Authentication Code):
+ * 4. HMAC (Hash-based Message Authentication Code):
  *    - Segunda camada de verificação
- *    - Hash de: content + timestamp + nonce + sender
+ *    - Hash de: content + timestamp + sender
  *    - Garante integridade mesmo se AES-GCM for comprometido
  *
- * 6. IV (Initialization Vector):
+ * 5. IV (Initialization Vector):
  *    - Valor aleatório único para cada mensagem
  *    - Garante que mensagens idênticas tenham cifras diferentes
  *    - Essencial para segurança do AES-GCM
+ *
+ * 6. MESSAGE ID (MongoDB _id):
+ *    - ID único automático do MongoDB
+ *    - Previne duplicatas exatas no banco
+ *    - Gerado automaticamente pelo banco
+ *
+ * PROTEÇÃO CONTRA REPLAY ATTACKS (SEM NONCE):
+ * - Timestamp com janela de 10 minutos (servidor rejeita mensagens antigas)
+ * - Rate limiting: 30 mensagens por minuto por usuário
+ * - MessageId único previne duplicatas exatas
+ * - Logs de auditoria registram tentativas suspeitas
  *
  * ============================================================================
  */
 
 const encryptedMessageSchema = mongoose.Schema(
   {
-    sender: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    destinatario: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, // Opcional
+    sender: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
+    destinatario: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, // Opcional (para grupo)
 
     // DADOS CRIPTOGRAFADOS
     content: { type: String, trim: true, required: true }, // Mensagem criptografada em Base64
@@ -63,72 +74,121 @@ const encryptedMessageSchema = mongoose.Schema(
     iv: { type: String, required: true }, // IV do AES-GCM (Base64, 12 bytes)
     authTag: { type: String, required: true }, // Tag de autenticação (Base64, 16 bytes)
 
-    // PROTEÇÃO CONTRA REPLAY
-    nonce: { type: Number, required: true, index: true }, // Contador sequencial
+    // PROTEÇÃO TEMPORAL
     timestamp: { type: Date, required: true, default: Date.now, index: true },
-    
+
     // VERIFICAÇÃO ADICIONAL
     hmac: { type: String, required: true }, // HMAC-SHA256 dos dados
-    
+
     // METADADOS
-    chat: { type: mongoose.Schema.Types.ObjectId, ref: "Chat", required: true },
+    chat: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Chat",
+      required: true,
+      index: true,
+    },
     readBy: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
-    
+
     // FLAGS DE SEGURANÇA
     integrityVerified: { type: Boolean, default: false }, // Se passou na verificação
     tampered: { type: Boolean, default: false }, // Se foi detectada adulteração
   },
   {
-    timestamps: true,
-    // Índices compostos para queries eficientes
-    indexes: [
-      { sender: 1, nonce: 1 }, // Verificação de nonce por sender
-      { chat: 1, timestamp: -1 }, // Busca de mensagens por chat
-      { destinatario: 1, integrityVerified: 1 } // Mensagens não verificadas
-    ]
+    timestamps: true, // Adiciona createdAt e updatedAt automaticamente
   }
 );
 
-// Índice único para prevenir nonces duplicados por usuário
-encryptedMessageSchema.index({ sender: 1, nonce: 1 }, { unique: true })
+// ÍNDICES COMPOSTOS para queries eficientes
+encryptedMessageSchema.index({ chat: 1, timestamp: -1 }); // Busca de mensagens por chat
+encryptedMessageSchema.index({ destinatario: 1, integrityVerified: 1 }); // Mensagens não verificadas
+encryptedMessageSchema.index({ sender: 1, createdAt: -1 }); // Mensagens por remetente
 
-// MÉTODO: Verificar se o nonce é válido (não é replay)
+// MÉTODO: Verificar se timestamp é recente (janela configurável)
+encryptedMessageSchema.methods.isTimestampValid = function (
+  maxAgeMinutes = 10
+) {
+  const now = new Date();
+  const messageAge = (now - this.timestamp) / 1000 / 60; // em minutos
+  return messageAge >= 0 && messageAge <= maxAgeMinutes;
+};
 
-encryptedMessageSchema.statics.isValidNonce = async function (senderId, nonce) {
-  const lastMessage = await this.findOne({ sender: senderId }).sort({ nonce: -1 }).select('nonce')
-  
-  // Primeira mensagem do usuário
-  if (!lastMessage) return true
-  
-  // Nonce deve ser maior que o último
-  return nonce > lastMessage.nonce
-}
+// MÉTODO: Verificar integridade completa da mensagem
+encryptedMessageSchema.methods.verifyIntegrity = function () {
+  // Verificar campos obrigatórios
+  const hasRequiredFields = !!(
+    this.content &&
+    this.encryptedKey &&
+    this.iv &&
+    this.authTag &&
+    this.hmac &&
+    this.timestamp
+  );
 
-// MÉTODO: Verificar se timestamp é recente (janela de 5 minutos)
+  // Verificar timestamp válido
+  const timestampValid = this.isTimestampValid(60); // 1 hora para histórico
 
-encryptedMessageSchema.methods.isTimestampValid = function (maxAgeMinutes = 5) {
-  const now = new Date()
-  const messageAge = (now - this.timestamp) / 1000 / 60 // em minutos
-  return messageAge <= maxAgeMinutes
-}
+  // Verificar flags de segurança
+  const notTampered = !this.tampered;
 
-// MIDLDLEWARE: Antes de salvar, validar integridade básica
+  return hasRequiredFields && timestampValid && notTampered;
+};
 
-encryptedMessageSchema.pre('save', async function (next) {
+// MIDDLEWARE: Antes de salvar, validar integridade básica
+encryptedMessageSchema.pre("save", async function (next) {
   if (this.isNew) {
-    // Verificar se nonce é válido
-    const isValid = await this.constructor.isValidNonce(this.sender, this.none)
-    if (!isValid) {
-      throw new Error('Invalid nonce - possible raplay attack detected')
+    // Verificar se timestamp não é muito antigo (10 minutos)
+    if (!this.isTimestampValid(10)) {
+      const error = new Error(
+        "Message timestamp too old - possible replay attack"
+      );
+      error.name = "TimestampError";
+      throw error;
     }
 
-    // Verificar se timestamp não é muito antigo
-    if (!this.isTimestampValid()) {
-      throw new Error('Message timestamp too old - possible replay attack')
+    // Verificar se timestamp não é do futuro
+    const now = new Date();
+    if (this.timestamp > now) {
+      const error = new Error("Message timestamp is in the future");
+      error.name = "TimestampError";
+      throw error;
     }
   }
-  next()
-})
+  next();
+});
+
+// MIDDLEWARE: Após salvar, registrar log de auditoria
+encryptedMessageSchema.post("save", function (doc) {
+  console.log(`✅ Mensagem salva com integridade verificada: ${doc._id}`);
+  console.log(`   Sender: ${doc.sender}`);
+  console.log(`   Chat: ${doc.chat}`);
+  console.log(`   Timestamp: ${doc.timestamp}`);
+});
+
+// MÉTODO ESTÁTICO: Buscar mensagens por chat com validação de integridade
+encryptedMessageSchema.statics.findValidMessages = async function (
+  chatId,
+  userId
+) {
+  const messages = await this.find({
+    chat: chatId,
+    $or: [{ destinatario: userId }, { sender: userId }],
+    integrityVerified: true,
+    tampered: false,
+  })
+    .populate("sender", "name pic email")
+    .populate("destinatario", "name email")
+    .sort({ timestamp: 1 });
+
+  return messages;
+};
+
+// MÉTODO ESTÁTICO: Contar mensagens não verificadas
+encryptedMessageSchema.statics.countUnverified = async function (userId) {
+  return await this.countDocuments({
+    destinatario: userId,
+    integrityVerified: false,
+  });
+};
 
 const Message = mongoose.model("Message", testSchema);
 

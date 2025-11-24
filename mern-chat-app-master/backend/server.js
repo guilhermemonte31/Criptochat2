@@ -1,7 +1,7 @@
 require("dotenv").config();
 
 const express = require("express");
-const https = require("https");
+const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const connectDB = require("./config/db");
@@ -36,39 +36,40 @@ if (fs.existsSync(buildPath)) {
 }
 
 // -------------------- Certificados HTTPS --------------------
-const certPath = path.join(__dirname, "certs");
-const keyFile = path.join(certPath, "key.pem");
-const certFile = path.join(certPath, "cert.pem");
+// const certPath = path.join(__dirname, "certs");
+// const keyFile = path.join(certPath, "key.pem");
+// const certFile = path.join(certPath, "cert.pem");
 
 // Gera certificados automaticamente se não existirem
-if (!fs.existsSync(keyFile) || !fs.existsSync(certFile)) {
-  console.log("⚙️  Gerando certificados autoassinados...");
-  require("child_process").execSync("node certs/generateCert.js", {
-    stdio: "inherit",
-  });
-}
+// if (!fs.existsSync(keyFile) || !fs.existsSync(certFile)) {
+//   console.log("⚙️  Gerando certificados autoassinados...");
+//   require("child_process").execSync("node certs/generateCert.js", {
+//     stdio: "inherit",
+//   });
+// }
 
-const options = {
-  key: fs.readFileSync(keyFile),
-  cert: fs.readFileSync(certFile),
-};
+// const options = {
+//   key: fs.readFileSync(keyFile),
+//   cert: fs.readFileSync(certFile),
+// };
 
 // -------------------- Servidor --------------------
-const HTTPS_PORT = process.env.PORT || 5000;
+const HTTP_PORT = process.env.PORT || 5000;
 
 // 🔒 Servidor HTTP principal
-const httpsServer = https.createServer(options, app).listen(HTTPS_PORT, () => {
+const httpServer = http.createServer(app).listen(HTTP_PORT, () => {
   console.log(
-    `🚀 Servidor HTTPS rodando em https://localhost:${HTTPS_PORT}`.green.bold
+    `🚀 Servidor HTTP rodando em http://localhost:${HTTP_PORT}`.green.bold
   );
 });
 
 // -------------------- Socket.IO --------------------
-const io = new Server(httpsServer, {
+const io = new Server(httpServer, {
   pingTimeout: 60000,
   cors: {
     origin: "*",
     credentials: true,
+    methods: ["GET", "POST"],
   },
 });
 
