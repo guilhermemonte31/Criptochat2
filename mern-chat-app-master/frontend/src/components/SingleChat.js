@@ -14,6 +14,13 @@ import { ChatState } from "../Context/ChatProvider";
 import "./SingleChat.css";
 
 import {
+  encryptWithIntegrity,
+  decryptWithIntegrity,
+  resetNonces
+} from '../utils/cryptoIntegrity';
+
+
+import {
   Modal,
   ModalOverlay,
   ModalContent,
@@ -46,7 +53,7 @@ const arrayBufferToBase64 = (buffer) => {
   return btoa(binary);
 };
 
-
+// FUNÇÕES DE GERENCIAMENTO DE CHAVES
 const deriveAesKey = async (password, salt) => {
   const enc = new TextEncoder();
   const keyMaterial = await window.crypto.subtle.importKey(
@@ -105,7 +112,6 @@ async function decryptPrivateKey(encryptedData, password) {
       aesKey,
       cipherBytes
     );
-    console.log("[abc] DECRYPTED PRIVATE KEY ARRAY BUFFER:", decrypted);
   } catch (e) {
     console.error("Decryption failed:", e);
     throw e;
@@ -238,7 +244,11 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
 
   const fetchMessages = async (isRefresh = false) => {
     if (!selectedChat || !privateKey) return;
-    console.log(isRefresh ? "\n🔄 Atualizando mensagens..." : "\n=== BUSCANDO MENSAGENS CIFRADAS ===");
+    console.log(
+      isRefresh
+        ? "\n🔄 Atualizando mensagens com verificação de integridade..."
+        : "\n=== BUSCANDO MENSAGENS COM VERIFICAÇÃO DE INTEGRIDADE ==="
+    );
     const testePrivKey = privateKey;
     console.log("ssdfChave privada usada para decifrar mensagens: ", testePrivKey);
 
@@ -247,12 +257,15 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
         headers: { Authorization: `Bearer ${user.token}` },
       };
 
-      const { data } = await axios.get(`/api/message/${selectedChat._id}`, config);
-     
+      const { data } = await axios.get(
+        `/api/message/${selectedChat._id}`,
+        config
+      );
 
       const decryptedMessages = [];
+      let tamperedCount = 0;
+      let verifiedCount = 0;
       for (const msg of data) {
-        
         // Evita processar mensagens que não são do chat atual
         if (!msg.destinatario || (!msg.sender && !msg.chat)) continue;
 
@@ -260,7 +273,9 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
           msg.destinatario?._id !== user._id && // não é destinatário
           msg.sender?._id !== user._id // nem remetente
         ) {
-          console.log(`Ignorando mensagem ${msg._id}: não pertence a ${user.name}`);
+          console.log(
+            `Ignorando mensagem ${msg._id}: não pertence a ${user.name}`
+          );
           continue;
         }
 
@@ -275,40 +290,70 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
 
         // Evita descriptografia se a chave ainda não foi carregada
         if (!privateKey) {
-          console.warn("⚠️ Chave privada ainda não disponível, adiando descriptografia.");
+          console.warn(
+            "⚠️ Chave privada ainda não disponível, adiando descriptografia."
+          );
           continue;
         }
 
-        const clear = await decryptMessage(msg.content, privateKey);
+        const clear = await decryptWithIntegrity(
+          {
+            content: msg.content,
+            encryptedKey: msg.encryptedKey,
+            iv: msg.iv,
+            authTag: msg.authTag,
+            nonce: msg.nonce,
+            timestamp: msg.timestamp,
+            hmac: msg.hmac,
+          },
+          privateKey,
+          msg.sender._id,
+          "shared-secret-key"
+        );
 
-        console.log(" clear: ", clear);
+        if (clear === null) {
+          // INTEGRIDADE FALHOU
+          console.error(`⚠️ Mensagem ${msg._id} FALHOU na verificação!`);
 
-        decryptedMessages.push({
-          ...msg,
-          decrypted: clear || "[Falha ao descriptografar mensagem]",
-        });
+          decryptedMessages.push({
+            ...msg,
+            decrypted: "[⚠️ MENSAGEM ADULTERADA - NÃO CONFIÁVEL]",
+            tampered: true,
+            integrityVerified: false,
+          });
+
+          toast({
+            title: "⚠️ Mensagem Suspeita Detectada!",
+            description: `Mensagem de ${msg.sender.name} falhou na verificação de integridade`,
+            status: "warning",
+            duration: 5000,
+            isClosable: true,
+          });
+        } else {
+          // Mensagem íntegra
+          verifiedCount++;
+          decryptedMessages.push({
+            ...msg,
+            decrypted: clear,
+            tampered: false,
+            integrityVerified: true,
+          });
+        }
       }
 
-      // Ordena por data e evita duplicação de mensagens já exibidas
-      const allMessages = isRefresh
-        ? [...messages, ...decryptedMessages].filter(
-            (v, i, arr) => arr.findIndex(m => m._id === v._id) === i
-          )
-        : decryptedMessages;
-      
+      // Remover duplicatas baseado em ID
       const uniqueMessages = decryptedMessages.filter(
-        (msg, index, self) =>
-          index === self.findIndex(
-            (m) =>
-              m.sender._id === msg.sender._id &&
-              m.decrypted === msg.decrypted &&
-              Math.abs(new Date(m.createdAt) - new Date(msg.createdAt)) < 2000 // margem de 2s
-          )
+        (msg, index, self) => index === self.findIndex((m) => m._id === msg._id)
       );
 
       setMessages(uniqueMessages);
 
-      // setMessages(decryptedMessages);
+      // Log de resumo
+      console.log("\n📊 RESUMO DA VERIFICAÇÃO:");
+      console.log(`   ✅ Mensagens verificadas: ${verifiedCount}`);
+      console.log(`   ❌ Mensagens adulteradas: ${tamperedCount}`);
+      console.log(`   📝 Total exibido: ${uniqueMessages.length}`);
+
       if (!isRefresh) socket.emit("join chat", selectedChat._id);
 
       console.log("✅ Todas as mensagens processadas e exibidas no chat.");
@@ -343,7 +388,7 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
 
   const sendMessage = async (event) => {
     if (event.key === "Enter" && newMessage) {
-      console.log("\n=== INICIANDO ENVIO DE MENSAGEM CIFRADA ===");
+      console.log("\n=== ENVIANDO MENSAGEM COM INTEGRIDADE ===");
       socket.emit("stop typing", selectedChat._id);
 
       try {
@@ -354,56 +399,108 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
           },
         };
 
+        // Buscar informações do chat
         const { data: chatInfo } = await axios.get(
           `/api/chat/${selectedChat._id}`,
           config
         );
 
-        console.log("👥 Usuários no chat:", chatInfo.users.map(u => u.email).join(", "));
+        console.log(
+          "👥 Usuários no chat:",
+          chatInfo.users.map((u) => u.email).join(", ")
+        );
 
         const encryptedMessages = [];
+
+        // Criptografar para cada membro do chat
         for (const member of chatInfo.users) {
-          console.log(`🔐 Criptografando mensagem para ${member.email}...`);
-          console.log("[DEBUG] Chave pública do destinatário: ", member.publicKey);
-          const encrypted = await encryptMessageForUser(newMessage, member.publicKey);
+          console.log(`\n🔐 Criptografando para ${member.email}...`);
+          // USAR NOVA FUNÇÃO COM INTEGRIDADE
+          const encrypted = await encryptWithIntegrity(
+            newMessage,
+            member.publicKey,
+            user._id,
+            "shared-secret-key" // Em produção: chave derivada
+          );
+
           encryptedMessages.push({
             destinatarioId: member._id,
-            content: encrypted,
+            content: encrypted.content,
+            encryptedKey: encrypted.encryptedKey,
+            iv: encrypted.iv,
+            authTag: encrypted.authTag,
+            nonce: encrypted.nonce,
+            timestamp: encrypted.timestamp,
+            hmac: encrypted.hmac,
           });
+
+          console.log(`   ✅ Criptografado para ${member.email}`);
+          console.log(`   📊 Nonce: ${encrypted.nonce}`);
+          console.log(`   AuthTag: ${encrypted.authTag}`);
+          console.log(`   iv: ${encrypted.iv}`);
+          console.log(`   hmac: ${encrypted.hmac}`);
+          console.log(`   ⏰ Timestamp: ${encrypted.timestamp}`);
         }
 
-        // Enviar cada versão criptografada
+        // Enviar todas as versões criptografadas
+        console.log(
+          `\n📤 Enviando ${encryptedMessages.length} mensagens para o servidor...`
+        );
+
         await Promise.all(
-          encryptedMessages.map(msg =>
+          encryptedMessages.map((msg) =>
             axios.post(
               "/api/message",
               {
-                content: msg.content,
                 chatId: selectedChat._id,
-                destinatarioId: msg.destinatarioId,
+                ...msg, // Envia TODOS os campos de integridade
               },
               config
             )
           )
         );
 
-        console.log("✅ Todas as mensagens cifradas enviadas com sucesso!");
+        console.log("✅ Todas as mensagens enviadas com sucesso!");
         setNewMessage("");
         socket.emit("new message", { room: selectedChat._id });
       } catch (error) {
         console.error("❌ Erro ao enviar mensagem:", error);
-        toast({
-          title: "Erro!",
-          description: "Falha ao enviar mensagem.",
-          status: "error",
-          duration: 5000,
-          isClosable: true,
-          position: "bottom",
-        });
+
+        // Mensagens de erro esecíficas
+        if (error.response?.status === 400) {
+          toast({
+            title: "Erro de Validação",
+            description:
+              error.response.data.message || "Mensagem rejeitada pelo servidor",
+            status: "error",
+            duration: 5000,
+            isClosable: true,
+            position: "bottom",
+          });
+        } else if (error.response?.status === 429) {
+          toast({
+            title: "Muitas Mensagens!",
+            description: "Aguarde um momento antes de enviar mais mensagens",
+            status: "warning",
+            duration: 5000,
+            isClosable: true,
+            position: "bottom",
+          });
+        } else {
+          toast({
+            title: "Erro!",
+            description: "Falha ao enviar mensagem.",
+            status: "error",
+            duration: 5000,
+            isClosable: true,
+            position: "bottom",
+          });
+        }
       }
     }
   };
 
+  // HANDLER DE DIGITAÇÃO
   const typingHandler = (e) => {
     setNewMessage(e.target.value);
     if (!socketConnected) return;
@@ -481,7 +578,10 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     }
   };
 
+  // ROTAÇÃO DE CHAVES COM INTEGRIDADE
   const changeKeys = async (verifiedPassword) => {
+    console.log("\n🔄 === INICIANDO ROTAÇÃO DE CHAVES ===");
+
     const config = {
       headers: { Authorization: `Bearer ${user.token}` },
     };
@@ -498,9 +598,7 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
       });
       return;
     }
-    //console.log("Mudando chaves... ", oldPrivateKey);
-
-    // console.log("Parametros:", userName, userID, userToken);
+    
     setIsRotatingKeys(true);
     const userInfos = JSON.parse(localStorage.getItem("userInfo"));
     const userName = userInfos.name;

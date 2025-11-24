@@ -16,8 +16,8 @@ connectDB();
 const app = express();
 
 // Configurações para UTF-8
-app.use(express.json({ charset: 'utf8' }));
-app.use(express.urlencoded({ extended: true, charset: 'utf8' }));
+app.use(express.json({ charset: "utf8" }));
+app.use(express.urlencoded({ extended: true, charset: "utf8" }));
 
 // -------------------- Rotas principais --------------------
 app.use("/api/user", userRoutes);
@@ -30,9 +30,7 @@ const buildPath = path.join(__dirname1, "frontend", "build");
 
 if (fs.existsSync(buildPath)) {
   app.use(express.static(buildPath));
-  app.get("*", (req, res) =>
-    res.sendFile(path.join(buildPath, "index.html"))
-  );
+  app.get("*", (req, res) => res.sendFile(path.join(buildPath, "index.html")));
 } else {
   app.get("/", (req, res) => res.send("⚠️ Build do frontend não encontrado."));
 }
@@ -45,7 +43,9 @@ const certFile = path.join(certPath, "cert.pem");
 // Gera certificados automaticamente se não existirem
 if (!fs.existsSync(keyFile) || !fs.existsSync(certFile)) {
   console.log("⚙️  Gerando certificados autoassinados...");
-  require("child_process").execSync("node certs/generateCert.js", { stdio: "inherit" });
+  require("child_process").execSync("node certs/generateCert.js", {
+    stdio: "inherit",
+  });
 }
 
 const options = {
@@ -56,9 +56,11 @@ const options = {
 // -------------------- Servidor --------------------
 const HTTPS_PORT = process.env.PORT || 5000;
 
-// 🔒 Servidor HTTPS principal
+// 🔒 Servidor HTTP principal
 const httpsServer = https.createServer(options, app).listen(HTTPS_PORT, () => {
-  console.log(`🚀 Servidor HTTPS rodando em https://localhost:${HTTPS_PORT}`.green.bold);
+  console.log(
+    `🚀 Servidor HTTPS rodando em https://localhost:${HTTPS_PORT}`.green.bold
+  );
 });
 
 // -------------------- Socket.IO --------------------
@@ -74,7 +76,7 @@ app.set("io", io);
 
 io.on("connection", (socket) => {
   console.log("Connected to socket.io");
-  
+
   socket.on("setup", (userData) => {
     socket.join(userData._id);
     socket.emit("connected");
@@ -85,14 +87,14 @@ io.on("connection", (socket) => {
     socket.join(room);
     console.log("Usuario entrou na sala:", room);
   });
-  
+
   socket.on("typing", (room) => socket.in(room).emit("typing"));
   socket.on("stop typing", (room) => socket.in(room).emit("stop typing"));
 
   socket.on("new message", (data) => {
     const room = data.room || data;
     console.log("Nova mensagem recebida para sala:", room);
-    
+
     // Emitir para todos na sala
     io.in(room).emit("refresh messages");
     console.log("Evento refresh messages emitido para sala:", room);
