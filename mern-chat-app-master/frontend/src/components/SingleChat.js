@@ -24,7 +24,7 @@ import {
   useDisclosure, // Hook para gerenciar o estado do modal
 } from "@chakra-ui/react";
 
-const ENDPOINT = "https://localhost:5000";
+const ENDPOINT = "https://fluky-damaris-officinally.ngrok-free.dev/";
 var socket, selectedChatCompare;
 
 // FUNÇÕES DE SUPORTE PARA DECIFRAR A CHAVE PRIVADA SALVA
