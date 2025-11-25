@@ -1,7 +1,7 @@
 require("dotenv").config();
 
 const express = require("express");
-const http = require("http");
+const https = require("https");
 const fs = require("fs");
 const path = require("path");
 const connectDB = require("./config/db");
@@ -54,15 +54,15 @@ const options = {
 };
 
 // -------------------- Servidor --------------------
-const HTTP_PORT = process.env.PORT || 5000;
+const HTTPS_PORT = process.env.PORT || 5000;
 
 // 🔒 Servidor HTTPS principal
-const httpServer = http.createServer(options, app).listen(HTTP_PORT, () => {
-  console.log(`🚀 Servidor HTTP rodando em http://localhost:${HTTP_PORT}`.green.bold);
+const httpsServer = https.createServer(options, app).listen(HTTPS_PORT, () => {
+  console.log(`🚀 Servidor HTTP rodando em https://localhost:${HTTPS_PORT}`.green.bold);
 });
 
 // -------------------- Socket.IO --------------------
-const io = new Server(httpServer, {
+const io = new Server(httpsServer, {
   pingTimeout: 60000,
   cors: {
     origin: "*",
