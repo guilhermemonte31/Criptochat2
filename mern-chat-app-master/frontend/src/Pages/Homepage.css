@@ -161,12 +161,13 @@
 }
 
 .input-with-button input {
-  padding-right: 70px;
+  width: 100%;
+  padding-right: 90px;
 }
 
 .show-password-btn {
   position: absolute;
-  right: 80px;
+  right: 16px;
   top: 50%;
   transform: translateY(-50%);
   padding: 5px 12px;

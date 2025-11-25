@@ -290,6 +290,10 @@ const Login = () => {
 
           <ModalFooter>
             <Button
+              style={{
+                fontVariantLigatures: "none",
+                WebkitFontVariantLigatures: "none"
+              }}
               colorScheme="blue"
               mr={3}
               isLoading={loadingReset}
