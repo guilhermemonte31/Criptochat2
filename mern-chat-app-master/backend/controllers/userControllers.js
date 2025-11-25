@@ -320,7 +320,7 @@ const requestPasswordReset = asyncHandler(async (req, res) => {
 
   await user.save();
 
-  const resetURL = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
+  const resetURL = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`
 
   console.log("RESET URL:", resetURL);
 

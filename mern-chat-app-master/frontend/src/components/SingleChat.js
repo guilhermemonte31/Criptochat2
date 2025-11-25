@@ -24,6 +24,11 @@ import {
   useDisclosure, // Hook para gerenciar o estado do modal
 } from "@chakra-ui/react";
 
+import{
+  encryptWithIntegrity,
+  decryptWithIntegrity,
+} from "./utils/criptotest";
+
 const ENDPOINT = "https://fluky-damaris-officinally.ngrok-free.dev/";
 var socket, selectedChatCompare;
 
@@ -177,7 +182,7 @@ const encryptMessageForUser = async (message, publicKeyPem) => {
     encoded
   );
   const encryptedB64 = btoa(String.fromCharCode(...new Uint8Array(encrypted)));
-  console.log("✅ Mensagem criptografada com sucesso.");
+  console.log("✅ testeMensagem criptografada com sucesso.", encryptedB64);
   return encryptedB64;
 };
 
@@ -251,6 +256,7 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
      
 
       const decryptedMessages = [];
+      const decryptedMessagesHmac = [];
       for (const msg of data) {
         
         // Evita processar mensagens que não são do chat atual
@@ -279,14 +285,23 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
           continue;
         }
 
-        const clear = await decryptMessage(msg.content, privateKey);
+        //const clear = await decryptMessage(msg.content, privateKey);
+        const testHmac = await decryptWithIntegrity(msg.content, privateKey, user._id, "shared-secret-key");
 
-        console.log(" clear: ", clear);
 
-        decryptedMessages.push({
+        console.log(" TESTEINTEGRITYy Mensagem original com HMAC: ", testHmac);
+
+        decryptedMessagesHmac.push({
           ...msg,
-          decrypted: clear || "[Falha ao descriptografar mensagem]",
+          decrypted: testHmac || "[Falha ao verificar integridade da mensagem]",
         });
+
+        // console.log(" clear: ", clear);
+
+        // decryptedMessages.push({
+        //   ...msg,
+        //   decrypted: clear || "[Falha ao descriptografar mensagem]",
+        // });
       }
 
       // Ordena por data e evita duplicação de mensagens já exibidas
@@ -296,7 +311,7 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
           )
         : decryptedMessages;
       
-      const uniqueMessages = decryptedMessages.filter(
+      const uniqueMessages = decryptedMessagesHmac.filter(
         (msg, index, self) =>
           index === self.findIndex(
             (m) =>
@@ -307,6 +322,8 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
       );
 
       setMessages(uniqueMessages);
+
+      console.log("TESTEINTEGRIDADE mensagens com HMAC verificado: ", decryptedMessagesHmac);
 
       // setMessages(decryptedMessages);
       if (!isRefresh) socket.emit("join chat", selectedChat._id);
@@ -344,6 +361,7 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   const sendMessage = async (event) => {
     if (event.key === "Enter" && newMessage) {
       console.log("\n=== INICIANDO ENVIO DE MENSAGEM CIFRADA ===");
+      console.log("Mensagem a ser enviada: ", newMessage);
       socket.emit("stop typing", selectedChat._id);
 
       try {
@@ -362,19 +380,47 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
         console.log("👥 Usuários no chat:", chatInfo.users.map(u => u.email).join(", "));
 
         const encryptedMessages = [];
+        const encryptedHmac = []
         for (const member of chatInfo.users) {
-          console.log(`🔐 Criptografando mensagem para ${member.email}...`);
-          console.log("[DEBUG] Chave pública do destinatário: ", member.publicKey);
+          
           const encrypted = await encryptMessageForUser(newMessage, member.publicKey);
+          console.log("Mensagem criptografada para usuário:", member.email, encrypted);
           encryptedMessages.push({
             destinatarioId: member._id,
             content: encrypted,
           });
+          const testeHmac = await encryptWithIntegrity(newMessage, member.publicKey, member._id, "shared-secret-key");
+          console.log(`   Estrutura da mensagem com criptografia reforçada por HMAC: ${testeHmac}`);
+
+          encryptedHmac.push({
+            destinatarioId: member._id,
+            content: testeHmac,
+          });
+          
+          
+          // const testeHmac = await encryptWithIntegrity(newMessage, member.publicKey, member._id, "shared-secret-key");
+          // console.log(`   ✅ Mensagem com integridade (HMAC): ${testeHmac}, tipo: ${typeof testeHmac}`);
         }
 
+
         // Enviar cada versão criptografada
+        // await Promise.all(
+        //   encryptedMessages.map(msg =>
+        //     axios.post(
+        //       "/api/message",
+        //       {
+        //         content: msg.content,
+        //         chatId: selectedChat._id,
+        //         destinatarioId: msg.destinatarioId,
+        //       },
+        //       config
+        //     )
+        //   )
+        // );
+
+        //console.log("✅ Todas as mensagens cifradas enviadas com sucesso. Enviando mensagens com HMAC para o banco...");
         await Promise.all(
-          encryptedMessages.map(msg =>
+          encryptedHmac.map(msg =>
             axios.post(
               "/api/message",
               {
@@ -532,9 +578,12 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
 
     for(const mensagem of allMessagesParaUsuario.data){
       console.log("Mensagem ",mensagem._id, " antes:" , mensagem.content);
-      const testeClear = await decryptMessage(mensagem.content, oldPrivateKey);
+      //const testeClear = await decryptMessage(mensagem.content, oldPrivateKey);
+      const testeClear = await decryptWithIntegrity(mensagem.content, oldPrivateKey, userID, "shared-secret-key");
+
       console.log("Mensagem ",mensagem._id, " depois de ser decifrada:", testeClear);
-      const clearEncrypted = await encryptMessageForUser(testeClear, newpublicPem);
+      //const clearEncrypted = await encryptMessageForUser(testeClear, newpublicPem);
+      const clearEncrypted = await encryptWithIntegrity(testeClear, newpublicPem, userID, "shared-secret-key");
       console.log("Mensagem ",mensagem._id, " depois de ser recriptografada:", clearEncrypted);
       
       try{
